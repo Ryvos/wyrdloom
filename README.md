@@ -2,22 +2,27 @@
 
 Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open-source**, **MIT-licensed**, **no telemetry**, **no microtransactions**, **no online-only DRM**. Ships as both a browser demo and signed native desktop binaries from the same TypeScript source.
 
-> Status: **v0.1.0 spike** — Pixi iso canvas + click-to-move + Tauri shell scaffold. See `RELEASE_NOTES_v0.1.md`.
+> Status: **v0.2.0 — Week 2: combat skeleton.** Pixi iso canvas + click-to-move + 1 enemy with chase AI + 1 player skill (melee) + HP bar + damage popups + full death/respawn cycle. See `RELEASE_NOTES_v0.2.md`.
 
-![v0.1.0 spike screenshot](docs/v0.1.0-spike.png)
+![v0.2.0 spike screenshot](docs/v0.2.0-spike.png)
+
+## What's in v0.2.0
+
+- 12×12 isometric grid, procedural sprites (real Kenney + LPC art lands in v0.3.0 — pack URLs were 404 at last attempt; manual download script is the next pass)
+- Click-to-move and click-to-attack
+- 1 enemy with chase-and-melee AI (aggro range 5, attack on adjacency)
+- Player melee skill: 25 dmg, 1-tile range, 400 ms cooldown
+- DOM HP bar + floating Pixi-rendered damage popups (kill popup styled distinct from hit)
+- Full death + respawn loop for both player (2 s, back to (6,6) full HP) and enemy (3 s, random edge tile, full HP)
+- Pure-TS combat math in `src/systems/combat.ts` and `src/systems/ai.ts` — Vitest covers every transition
 
 ## What's in v0.1.0
 
-- 12×12 isometric grid (procedurally drawn diamond tiles)
-- Click-to-move pathing (one tile per ~150 ms, via `setInterval`-equivalent ticker)
-- Camera follows player
-- Pixi v8 + WebGL rendering
-- Tauri 2.x shell scaffolded (capability allow-list locked: FS scoped to `$APPDATA/wyrdloom/saves`, window controls, dialog — no `http:`, `shell:`, `process:`)
-- Vitest unit tests for iso math (5 tests)
-- Playwright e2e tests (Chromium + WebKit)
+- 12×12 isometric grid, click-to-move pathing
+- Pixi v8 + WebGL rendering, Tauri 2.x shell scaffolded
+- Capability allow-list locked: FS scoped to `$APPDATA/wyrdloom/saves`, window controls, dialog — no `http:`, `shell:`, `process:`
+- Vitest unit tests for iso math, Playwright e2e for boot + click-to-move
 - License-compliance CI gate
-
-Real Kenney + LPC art replaces the placeholder primitives in v0.2.0.
 
 ## Stack
 
@@ -33,11 +38,12 @@ Real Kenney + LPC art replaces the placeholder primitives in v0.2.0.
 | Tests | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) |
 | Pkg mgr | [bun](https://bun.sh) (preferred) — `pnpm` fallback |
 
-## Controls (v0.1.0)
+## Controls (v0.2.0)
 
 | Action | Binding |
 |---|---|
-| Move | Left-click a tile |
+| Move | Left-click an empty tile |
+| Attack enemy | Left-click an enemy (player walks into melee, then auto-attacks) |
 | Quit | Close the window — there's no menu yet |
 
 Full keymap (hotbar, inventory, character, talents, …) lands by Week 4.

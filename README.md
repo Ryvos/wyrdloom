@@ -2,9 +2,21 @@
 
 Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open-source**, **MIT-licensed**, **no telemetry**, **no microtransactions**, **no online-only DRM**. Ships as both a browser demo and signed native desktop binaries from the same TypeScript source.
 
-> Status: **v0.2.0 — Week 2: combat skeleton.** Pixi iso canvas + click-to-move + 1 enemy with chase AI + 1 player skill (melee) + HP bar + damage popups + full death/respawn cycle. See `RELEASE_NOTES_v0.2.md`.
+> Status: **v0.3.0 — Week 3: loot pipeline.** Combat from v0.2.0 + items dropping on death + rarity tiers + affixes + ground glow + tooltip on hover + click-to-pickup + equipped-weapon damage flowing into combat. See `RELEASE_NOTES_v0.3.md`.
 
-![v0.2.0 spike screenshot](docs/v0.2.0-spike.png)
+![v0.3.0 spike screenshot](docs/v0.3.0-spike.png)
+
+## What's in v0.3.0
+
+- Item types: 12 base items × 4 slots × 3 rarity tiers (Common / Magic / Rare); 16 affixes (10 prefixes, 6 suffixes) across `atk_flat` + `hp_flat` modifiers
+- Authored data: `data/items.json` + `data/affixes.json` (room to grow to 200×200 by v0.6.0)
+- Deterministic loot roller (`seedrandom` PRNG) — same seed → same item, every time
+- Drop on death with weighted rarity + ilvl caps
+- Ground items glow in rarity color, pulse animation, name label above
+- DOM tooltip on hover with name (rarity color), base damage/armor, every rolled affix, compare-with-equipped
+- Click-to-walk-then-click-to-pickup (D2-style); auto-equip into the weapon/head/chest/ring slot
+- Equipped weapon's `baseDamage` + `atk_flat` affixes feed `Actor.derivedStats.atk` → flow directly into combat damage
+- 4 new e2e tests covering forceDrop determinism, tooltip rendering, walk+pickup-equip, weapon swap
 
 ## What's in v0.2.0
 
@@ -38,12 +50,15 @@ Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open
 | Tests | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) |
 | Pkg mgr | [bun](https://bun.sh) (preferred) — `pnpm` fallback |
 
-## Controls (v0.2.0)
+## Controls (v0.3.0)
 
 | Action | Binding |
 |---|---|
 | Move | Left-click an empty tile |
 | Attack enemy | Left-click an enemy (player walks into melee, then auto-attacks) |
+| Walk to loot | Left-click a ground item — player walks there |
+| Pick up loot | Left-click a ground item *while standing on it* — equips, replacing the previous slot occupant (which drops back at your feet) |
+| Inspect loot | Hover the cursor over a ground item — tooltip shows name, base stat, affixes, and current-equipped compare |
 | Quit | Close the window — there's no menu yet |
 
 Full keymap (hotbar, inventory, character, talents, …) lands by Week 4.

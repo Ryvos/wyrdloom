@@ -1,0 +1,19 @@
+{
+  "bases": [
+    { "id": "rusty-dagger",   "name": "Rusty Dagger",   "slot": "weapon", "ilvl": 1, "baseDamage": 5 },
+    { "id": "iron-sword",     "name": "Iron Sword",     "slot": "weapon", "ilvl": 5, "baseDamage": 10 },
+    { "id": "steel-blade",    "name": "Steel Blade",    "slot": "weapon", "ilvl": 10, "baseDamage": 15 },
+
+    { "id": "leather-cap",    "name": "Leather Cap",    "slot": "head",   "ilvl": 1, "baseArmor": 2 },
+    { "id": "iron-helm",      "name": "Iron Helm",      "slot": "head",   "ilvl": 5, "baseArmor": 5 },
+    { "id": "winged-helm",    "name": "Winged Helm",    "slot": "head",   "ilvl": 10, "baseArmor": 9 },
+
+    { "id": "padded-tunic",   "name": "Padded Tunic",   "slot": "chest",  "ilvl": 1, "baseArmor": 4 },
+    { "id": "chain-hauberk",  "name": "Chain Hauberk",  "slot": "chest",  "ilvl": 5, "baseArmor": 9 },
+    { "id": "plate-cuirass",  "name": "Plate Cuirass",  "slot": "chest",  "ilvl": 10, "baseArmor": 15 },
+
+    { "id": "tin-band",       "name": "Tin Band",       "slot": "ring",   "ilvl": 1 },
+    { "id": "silver-loop",    "name": "Silver Loop",    "slot": "ring",   "ilvl": 5 },
+    { "id": "gold-signet",    "name": "Gold Signet",    "slot": "ring",   "ilvl": 10 }
+  ]
+}

@@ -2,6 +2,8 @@
 // Pure data — no Pixi imports. The view layer reads this and renders.
 
 import type { TileCoord } from '../engine/iso';
+import type { Equipment } from '../systems/inventory';
+import type { DerivedStats } from '../systems/inventory';
 
 export type ActorKind = 'player' | 'enemy';
 
@@ -17,7 +19,9 @@ export interface ActorStats {
 export interface Actor {
   readonly id: string;
   readonly kind: ActorKind;
-  readonly stats: ActorStats;
+  readonly stats: ActorStats;       // base (unchanging)
+  derivedStats: DerivedStats;       // base + equipment, recomputed on equip
+  equipment: Equipment;             // slot -> Item (player only in v0.3.0)
   tile: TileCoord;
   hp: number;
   alive: boolean;
@@ -50,6 +54,8 @@ export function makeActor(id: string, kind: ActorKind, stats: ActorStats, tile: 
     id,
     kind,
     stats,
+    derivedStats: { atk: stats.atk, maxHp: stats.maxHp, armor: 0 },
+    equipment: {},
     tile,
     hp: stats.maxHp,
     alive: true,

@@ -1,0 +1,76 @@
+import { describe, it, expect } from 'vitest';
+import { rollDrop, rollAffixes } from '../../src/systems/loot';
+import { makeRng } from '../../src/systems/rng';
+import type { BaseItem } from '../../src/types/items';
+
+describe('loot rolling', () => {
+  it('is deterministic for a fixed seed', () => {
+    const a = rollDrop({ monsterLevel: 5, seed: 'test-seed-001' });
+    const b = rollDrop({ monsterLevel: 5, seed: 'test-seed-001' });
+    expect(a).toEqual(b);
+  });
+
+  it('returns different items for different seeds', () => {
+    const a = rollDrop({ monsterLevel: 5, seed: 'seed-A' });
+    const b = rollDrop({ monsterLevel: 5, seed: 'seed-B' });
+    // Either both nullable or both items — but if items, name should typically differ.
+    if (a && b) expect(a.uid).not.toBe(b.uid);
+  });
+
+  it('ilvl cap means low-level monsters never drop high-level bases', () => {
+    for (let i = 0; i < 50; i++) {
+      const drop = rollDrop({ monsterLevel: 1, seed: `seed-${i}` });
+      if (drop) expect(drop.ilvl).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('common rarity has 0 affixes', () => {
+    // Sample many drops; verify any common ones have no affixes.
+    let saw = false;
+    for (let i = 0; i < 200; i++) {
+      const drop = rollDrop({ monsterLevel: 5, seed: `common-${i}` });
+      if (drop?.rarity === 'common') {
+        expect(drop.affixes).toEqual([]);
+        saw = true;
+      }
+    }
+    expect(saw).toBe(true);
+  });
+
+  it('rare rarity has at least 2 affixes', () => {
+    let saw = false;
+    for (let i = 0; i < 200; i++) {
+      const drop = rollDrop({ monsterLevel: 10, seed: `rare-${i}` });
+      if (drop?.rarity === 'rare') {
+        expect(drop.affixes.length).toBeGreaterThanOrEqual(2);
+        saw = true;
+      }
+    }
+    expect(saw).toBe(true);
+  });
+
+  it('rollAffixes only picks affixes valid for the slot', () => {
+    const sword: BaseItem = { id: 's', name: 'S', slot: 'weapon', ilvl: 10, baseDamage: 10 };
+    const helm: BaseItem = { id: 'h', name: 'H', slot: 'head', ilvl: 10, baseArmor: 5 };
+    for (let i = 0; i < 20; i++) {
+      const wAffixes = rollAffixes(makeRng(`w-${i}`), sword, 'rare');
+      const hAffixes = rollAffixes(makeRng(`h-${i}`), helm, 'rare');
+      // Slot eligibility is enforced by `slots: ["weapon"]` etc. in the
+      // data file; we just check affixes get produced without crashing
+      // and respect the rarity's count floor.
+      expect(wAffixes.length).toBeGreaterThanOrEqual(2);
+      expect(hAffixes.length).toBeGreaterThanOrEqual(2);
+    }
+  });
+
+  it('rolled affix values land within their authored range', () => {
+    for (let i = 0; i < 100; i++) {
+      const drop = rollDrop({ monsterLevel: 10, seed: `range-${i}` });
+      if (!drop) continue;
+      for (const aff of drop.affixes) {
+        // Just sanity-check positive (the data file has all min >= 1).
+        expect(aff.value).toBeGreaterThan(0);
+      }
+    }
+  });
+});

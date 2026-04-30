@@ -27,9 +27,10 @@ export function canAttack(attacker: Actor, target: Actor, nowMs: number): boolea
 }
 
 // Apply an attack. Mutates `attacker.lastAttackAt` and `target.hp`/`target.alive`.
-// Returns the event for the FX layer to render.
+// Damage uses derivedStats.atk (base + equipped affixes), so a freshly-rolled
+// weapon affects the next swing without touching combat code.
 export function performAttack(attacker: Actor, target: Actor, nowMs: number): DamageEvent {
-  const amount = attacker.stats.atk;
+  const amount = attacker.derivedStats.atk;
   attacker.lastAttackAt = nowMs;
   target.hp = Math.max(0, target.hp - amount);
   const killed = target.hp === 0 && target.alive;

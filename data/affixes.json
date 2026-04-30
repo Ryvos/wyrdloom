@@ -1,0 +1,22 @@
+{
+  "prefixes": [
+    { "id": "sharp",     "name": "Sharp",     "kind": "prefix", "slots": ["weapon"],                  "tier": 1, "mod": { "type": "atk_flat", "min": 2,  "max": 5  } },
+    { "id": "honed",     "name": "Honed",     "kind": "prefix", "slots": ["weapon"],                  "tier": 2, "mod": { "type": "atk_flat", "min": 5,  "max": 10 } },
+    { "id": "savage",    "name": "Savage",    "kind": "prefix", "slots": ["weapon"],                  "tier": 3, "mod": { "type": "atk_flat", "min": 10, "max": 18 } },
+    { "id": "vicious",   "name": "Vicious",   "kind": "prefix", "slots": ["weapon"],                  "tier": 4, "mod": { "type": "atk_flat", "min": 15, "max": 25 } },
+    { "id": "ruinous",   "name": "Ruinous",   "kind": "prefix", "slots": ["weapon"],                  "tier": 5, "mod": { "type": "atk_flat", "min": 25, "max": 40 } },
+    { "id": "sturdy",    "name": "Sturdy",    "kind": "prefix", "slots": ["head","chest","ring"],     "tier": 1, "mod": { "type": "hp_flat",  "min": 5,  "max": 10 } },
+    { "id": "stalwart",  "name": "Stalwart",  "kind": "prefix", "slots": ["head","chest","ring"],     "tier": 2, "mod": { "type": "hp_flat",  "min": 10, "max": 18 } },
+    { "id": "ironbound", "name": "Ironbound", "kind": "prefix", "slots": ["head","chest","ring"],     "tier": 3, "mod": { "type": "hp_flat",  "min": 18, "max": 30 } },
+    { "id": "warded",    "name": "Warded",    "kind": "prefix", "slots": ["head","chest","ring"],     "tier": 4, "mod": { "type": "hp_flat",  "min": 30, "max": 45 } },
+    { "id": "indomitable","name": "Indomitable","kind": "prefix","slots": ["head","chest","ring"],    "tier": 5, "mod": { "type": "hp_flat",  "min": 45, "max": 70 } }
+  ],
+  "suffixes": [
+    { "id": "of-the-cub",   "name": "of the Cub",   "kind": "suffix", "slots": ["head","chest","ring","weapon"], "tier": 1, "mod": { "type": "hp_flat", "min": 4,  "max": 8  } },
+    { "id": "of-the-bear",  "name": "of the Bear",  "kind": "suffix", "slots": ["head","chest","ring","weapon"], "tier": 2, "mod": { "type": "hp_flat", "min": 8,  "max": 14 } },
+    { "id": "of-the-titan", "name": "of the Titan", "kind": "suffix", "slots": ["head","chest","ring","weapon"], "tier": 3, "mod": { "type": "hp_flat", "min": 14, "max": 24 } },
+    { "id": "of-malice",    "name": "of Malice",    "kind": "suffix", "slots": ["weapon","ring"],                "tier": 1, "mod": { "type": "atk_flat","min": 1,  "max": 4  } },
+    { "id": "of-the-wolf",  "name": "of the Wolf",  "kind": "suffix", "slots": ["weapon","ring"],                "tier": 2, "mod": { "type": "atk_flat","min": 4,  "max": 8  } },
+    { "id": "of-the-storm", "name": "of the Storm", "kind": "suffix", "slots": ["weapon","ring"],                "tier": 3, "mod": { "type": "atk_flat","min": 8,  "max": 14 } }
+  ]
+}

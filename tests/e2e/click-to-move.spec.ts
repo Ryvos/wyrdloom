@@ -1,28 +1,7 @@
+/// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-declare global {
-  interface Window {
-    __wyrdloom: {
-      readonly version: string;
-      readonly playerTile: { tx: number; ty: number };
-      readonly playerHp: number;
-      readonly playerAlive: boolean;
-      readonly goal: { tx: number; ty: number } | null;
-      readonly attackTarget: string | null;
-      readonly enemies: ReadonlyArray<{
-        id: string;
-        tile: { tx: number; ty: number };
-        hp: number;
-        alive: boolean;
-      }>;
-      readonly dev: {
-        setPlayerHp(n: number): void;
-      };
-    };
-  }
-}
-
-const TARGET_VERSION = '0.2.0';
+const TARGET_VERSION = '0.3.0';
 
 test.describe('boot + movement', () => {
   test('boots without console errors', async ({ page }) => {

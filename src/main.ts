@@ -1,5 +1,6 @@
-// WYRDLOOM v0.2.0 spike — Pixi iso canvas, click-to-move,
-// 1 enemy + AI, 1 player skill (melee), HP bar, damage popups, death/respawn.
+// WYRDLOOM v0.3.0 spike — combat + loot pipeline.
+// New in v0.3.0: enemies drop items on death, ground items glow + label,
+// click to pick up, equipped weapon affects player atk, tooltip on hover.
 
 import { Application, Container, Graphics, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
@@ -12,6 +13,12 @@ import { makePlayerSprite, makeEnemySprite, makeHitFlash } from './fx/sprites';
 import { spawnDamagePopup } from './fx/damage_popup';
 import { mountHpBar } from './ui/hp_bar';
 import type { HpBar } from './ui/hp_bar';
+import { rollDrop } from './systems/loot';
+import { computeDerivedStats, equip } from './systems/inventory';
+import { spawnGroundItem } from './fx/ground_item';
+import type { GroundItemView } from './fx/ground_item';
+import { mountTooltip } from './ui/tooltip';
+import type { Tooltip } from './ui/tooltip';
 
 const GRID_W = 12;
 const GRID_H = 12;
@@ -32,10 +39,14 @@ interface World {
   readonly world: Container;
   readonly target: Graphics;
   readonly hpBar: HpBar;
+  readonly tooltip: Tooltip;
   readonly player: ActorView;
   readonly enemies: ActorView[];
+  groundItems: GroundItemView[];
   playerDeadAt: number;
   enemyRespawnQueue: { id: string; spawnAt: number }[];
+  killCount: number; // drives loot seed
+  hoveringItemId: string | null;
 }
 
 async function main(): Promise<void> {
@@ -76,7 +87,9 @@ async function main(): Promise<void> {
   const enemyView = mountActorView(world, enemyActor, makeEnemySprite());
 
   const hpBar = mountHpBar(hud);
-  hpBar.set(playerActor.hp, playerActor.stats.maxHp);
+  hpBar.set(playerActor.hp, playerActor.derivedStats.maxHp);
+
+  const tooltip = mountTooltip(hud);
 
   centerCamera(app, camera, playerActor.tile);
 
@@ -86,13 +99,18 @@ async function main(): Promise<void> {
     world,
     target,
     hpBar,
+    tooltip,
     player: playerView,
     enemies: [enemyView],
+    groundItems: [],
     playerDeadAt: 0,
     enemyRespawnQueue: [],
+    killCount: 0,
+    hoveringItemId: null,
   };
 
   bindClickHandler(W);
+  bindHoverHandler(W);
   app.ticker.add((tick) => onTick(W, tick.lastTime));
 
   updateDebug(W);
@@ -110,6 +128,12 @@ async function main(): Promise<void> {
     get playerAlive() {
       return playerActor.alive;
     },
+    get playerAtk() {
+      return playerActor.derivedStats.atk;
+    },
+    get playerMaxHp() {
+      return playerActor.derivedStats.maxHp;
+    },
     get goal() {
       return playerActor.goal ? { ...playerActor.goal } : null;
     },
@@ -124,21 +148,55 @@ async function main(): Promise<void> {
         alive: v.actor.alive,
       }));
     },
-    version: '0.2.0',
+    get groundItems() {
+      return W.groundItems.map((g) => ({
+        uid: g.item.uid,
+        name: g.item.name,
+        rarity: g.item.rarity,
+        slot: g.item.slot,
+        tile: { ...g.tile },
+        affixCount: g.item.affixes.length,
+      }));
+    },
+    get equipped() {
+      return Object.entries(playerActor.equipment).map(([slot, item]) => ({
+        slot,
+        uid: item.uid,
+        name: item.name,
+        rarity: item.rarity,
+      }));
+    },
+    version: '0.3.0',
     dev: {
-      // Reduce player hp to a known value (clamped to [0, maxHp]). For death-flow tests.
       setPlayerHp(n: number): void {
-        playerActor.hp = Math.max(0, Math.min(playerActor.stats.maxHp, n));
+        playerActor.hp = Math.max(0, Math.min(playerActor.derivedStats.maxHp, n));
         if (playerActor.hp === 0 && playerActor.alive) {
-          // Mirror onPlayerDeath without needing the World handle.
           playerActor.alive = false;
           W.playerDeadAt = W.app.ticker.lastTime;
-          W.hpBar.set(0, playerActor.stats.maxHp);
+          W.hpBar.set(0, playerActor.derivedStats.maxHp);
           W.hpBar.setDead(true);
           W.player.node.visible = false;
         } else {
-          W.hpBar.set(playerActor.hp, playerActor.stats.maxHp);
+          W.hpBar.set(playerActor.hp, playerActor.derivedStats.maxHp);
         }
+      },
+      // Force a drop with a known seed at a specific tile (or the enemy's tile
+      // if `tile` is omitted). Used by the loot e2e tests so we don't have to
+      // wait for the random 80% drop chance and so swap-equip tests can pin
+      // the replacement item at the player's current location.
+      forceDrop(seed: string, tile?: { tx: number; ty: number }): void {
+        const item = rollDrop({ monsterLevel: 5, seed });
+        if (!item) return;
+        let where: { tx: number; ty: number };
+        if (tile) {
+          where = { ...tile };
+        } else {
+          const enemy = W.enemies[0];
+          if (!enemy) return;
+          where = { ...enemy.actor.tile };
+        }
+        const view = spawnGroundItem(W.world, W.app.ticker, item, where);
+        W.groundItems.push(view);
       },
     },
   };
@@ -164,10 +222,28 @@ function bindClickHandler(W: World): void {
     const local = W.world.toLocal(e.global);
     const tile = roundTile(...Object.values(screenToTile(local.x, local.y)) as [number, number]);
 
-    // Out of bounds — ignore.
     if (tile.tx < 0 || tile.ty < 0 || tile.tx >= GRID_W || tile.ty >= GRID_H) return;
 
-    // If click landed on an alive enemy, set attack target.
+    // 1) Ground item on this tile? Pick it up if the player is here too,
+    // otherwise walk to it (loot pickup is on contact).
+    const groundHere = W.groundItems.find(
+      (g) => g.tile.tx === tile.tx && g.tile.ty === tile.ty,
+    );
+    if (groundHere) {
+      if (
+        groundHere.tile.tx === W.player.actor.tile.tx &&
+        groundHere.tile.ty === W.player.actor.tile.ty
+      ) {
+        pickUp(W, groundHere);
+      } else {
+        W.player.actor.attackTarget = null;
+        W.player.actor.goal = tile;
+        showTarget(W, tile, false);
+      }
+      return;
+    }
+
+    // 2) Alive enemy? Engage.
     const enemyHere = W.enemies.find(
       (v) => v.actor.alive && v.actor.tile.tx === tile.tx && v.actor.tile.ty === tile.ty,
     );
@@ -178,11 +254,61 @@ function bindClickHandler(W: World): void {
       return;
     }
 
-    // Otherwise — walk to empty tile, clear any attack intent.
+    // 3) Empty tile — walk.
     W.player.actor.attackTarget = null;
     W.player.actor.goal = tile;
     showTarget(W, tile, false);
   });
+}
+
+function bindHoverHandler(W: World): void {
+  // Hover tooltip — track the cursor on the canvas, show tooltip when over a
+  // ground-item tile. Uses Pixi's federated pointermove which fires on the
+  // canvas regardless of which child sprite the cursor is over.
+  W.world.on('pointermove', (e: FederatedPointerEvent) => {
+    const local = W.world.toLocal(e.global);
+    const tile = roundTile(...Object.values(screenToTile(local.x, local.y)) as [number, number]);
+    const ground = W.groundItems.find(
+      (g) => g.tile.tx === tile.tx && g.tile.ty === tile.ty,
+    );
+    if (ground) {
+      const equipped = W.player.actor.equipment[ground.item.slot];
+      W.tooltip.showFor(ground.item, equipped, e.global.x, e.global.y);
+      W.hoveringItemId = ground.item.uid;
+    } else {
+      W.tooltip.hide();
+      W.hoveringItemId = null;
+    }
+  });
+
+  W.world.on('pointerleave', () => {
+    W.tooltip.hide();
+    W.hoveringItemId = null;
+  });
+}
+
+function pickUp(W: World, view: GroundItemView): void {
+  const player = W.player.actor;
+  const replaced = equip(player.equipment, view.item);
+  // Recompute derived stats — reads base + every equipped item.
+  player.derivedStats = computeDerivedStats(
+    player.stats.atk,
+    player.stats.maxHp,
+    player.equipment,
+  );
+  // Don't let HP exceed the new maxHp if it shrunk.
+  player.hp = Math.min(player.hp, player.derivedStats.maxHp);
+  W.hpBar.set(player.hp, player.derivedStats.maxHp);
+
+  // Remove the ground view; if a previous item was replaced, drop it back here.
+  W.groundItems = W.groundItems.filter((g) => g.item.uid !== view.item.uid);
+  view.destroy();
+  W.tooltip.hide();
+
+  if (replaced) {
+    const replacedView = spawnGroundItem(W.world, W.app.ticker, replaced, { ...player.tile });
+    W.groundItems.push(replacedView);
+  }
 }
 
 function onTick(W: World, nowMs: number): void {
@@ -260,6 +386,17 @@ function tickPlayer(W: World, nowMs: number): void {
           player.attackTarget = null;
           player.goal = null;
           W.target.visible = false;
+          // Roll a drop. Seed includes kill count so each kill is independent.
+          W.killCount += 1;
+          const item = rollDrop({
+            monsterLevel: 5,
+            seed: `${targetView.actor.id}-${W.killCount}-${Math.floor(nowMs)}`,
+          });
+          if (item) {
+            const dropTile = { ...targetView.actor.tile };
+            const groundView = spawnGroundItem(W.world, W.app.ticker, item, dropTile);
+            W.groundItems.push(groundView);
+          }
           W.enemyRespawnQueue.push({
             id: targetView.actor.id,
             spawnAt: nowMs + RESPAWN_ENEMY_DELAY_MS,
@@ -369,8 +506,8 @@ function updateDebug(W: World): void {
   const p = W.player.actor;
   const enemy = W.enemies[0]?.actor;
   const e = enemy ? `${enemy.alive ? 'alive' : 'dead'} hp ${enemy.hp}` : '—';
-  const tgt = p.attackTarget ?? '—';
-  el.textContent = `you ${p.tile.tx},${p.tile.ty} hp ${p.hp}  target ${tgt}  enemy ${e}`;
+  const wpn = p.equipment.weapon?.name ?? 'unarmed';
+  el.textContent = `you ${p.tile.tx},${p.tile.ty}  hp ${p.hp}/${p.derivedStats.maxHp}  atk ${p.derivedStats.atk} (${wpn})  enemy ${e}  loot ${W.groundItems.length}`;
 }
 
 main().catch((err) => {

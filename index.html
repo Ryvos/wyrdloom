@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' fill='%230a0a0c'/><path d='M5 6 L11 26 L16 16 L21 26 L27 6' stroke='%23c7b27a' stroke-width='3' fill='none' stroke-linejoin='round'/></svg>" />
+    <title>WYRDLOOM</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0a0c;
+        --ink: #d8d2bf;
+        --rune: #6b8a64;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: system-ui, sans-serif;
+        overflow: hidden;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      #hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 10;
+      }
+      #hud .title {
+        position: absolute;
+        top: 12px;
+        left: 16px;
+        font-size: 14px;
+        letter-spacing: 0.2em;
+        opacity: 0.65;
+      }
+      #hud .hint {
+        position: absolute;
+        bottom: 12px;
+        left: 16px;
+        font-size: 12px;
+        opacity: 0.5;
+      }
+      #hud [data-debug] {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        font-size: 12px;
+        opacity: 0.7;
+        font-family: ui-monospace, monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud" aria-hidden="true">
+      <div class="title">WYRDLOOM &mdash; v0.1.0 spike</div>
+      <div data-debug data-testid="debug-readout">init…</div>
+      <div class="hint">Left-click a tile to move &middot; Esc not yet wired</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Linux deps for Tauri
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Install JS deps
+        run: bun install --frozen-lockfile
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: License + capability gate
+        run: bun run check:licenses
+
+      - name: Sync version into Tauri files
+        run: bun run sync:version
+
+      - name: Unit tests
+        run: bun run test
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium webkit
+
+      - name: E2E tests
+        run: bun run test:e2e
+
+      - name: Web build
+        run: bun run build
+
+      - name: Bundle-size gate (web)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          total=$(du -sb dist/ | awk '{print $1}')
+          js=$(find dist/ -name "*.js" -exec stat -c%s {} + | awk '{s+=$1} END {print s}')
+          echo "dist/ total = $total bytes; JS = $js bytes"
+          # 30 MB total cap, 1.5 MB JS pre-gzip cap (BUILD_PROMPT §9.4)
+          test "$total" -le 31457280
+          test "$js" -le 1572864
+
+      - name: Tauri Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Tauri build
+        run: bun run tauri:build
+        env:
+          # Don't sign in CI; signing is a release-time concern.
+          TAURI_SIGNING_PRIVATE_KEY: ''
+
+      - name: Upload web bundle
+        if: matrix.os == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+
+      - name: Upload native bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.os }}
+          path: src-tauri/target/release/bundle/

@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.vite/
+.cache/
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# tests
+playwright-report/
+test-results/
+.playwright/
+
+# editor
+.vscode/
+.idea/
+*.swp
+
+# bun / pnpm lockfiles are committed; bunfig caches are not
+.bun/

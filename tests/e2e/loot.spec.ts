@@ -1,17 +1,23 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 // Seed handpicked from offline probe — yields a magic Honed Iron Sword of Malice
 // (weapon, baseDamage 10, +Honed atk_flat, +of-Malice atk_flat).
 const WEAPON_SEED = 'weapon-seed-17';
 
-test.describe('loot pipeline (v0.4.0 — pickup goes into bag)', () => {
+test.describe('loot pipeline (v0.5.0 — pickup goes into bag, dungeon-aware)', () => {
   test('forceDrop deterministically yields the same item for a given seed', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, VERSION);
 
-    await page.evaluate((s) => window.__wyrdloom.dev.forceDrop(s), WEAPON_SEED);
+    // Default forceDrop drops at the enemy's tile, which in v0.5.0 is the
+    // boss room. Pin to the player's tile so the test stays in view-range
+    // and doesn't depend on dungeon-traversal timing.
+    await page.evaluate((s) => {
+      const p = window.__wyrdloom.playerTile;
+      window.__wyrdloom.dev.forceDrop(s, p);
+    }, WEAPON_SEED);
     const ground = await page.evaluate(() => window.__wyrdloom.groundItems);
     expect(ground).toHaveLength(1);
     expect(ground[0]).toMatchObject({
@@ -22,17 +28,21 @@ test.describe('loot pipeline (v0.4.0 — pickup goes into bag)', () => {
     });
   });
 
-  test('hovering a ground item shows the tooltip with affixes', async ({ page }) => {
+  test('hovering a ground item at the player tile shows the tooltip', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, VERSION);
 
-    await page.evaluate((s) => window.__wyrdloom.dev.forceDrop(s), WEAPON_SEED);
+    // Drop at the player's tile so viewport (~640, 400) maps to it.
+    await page.evaluate((s) => {
+      const p = window.__wyrdloom.playerTile;
+      window.__wyrdloom.dev.forceDrop(s, p);
+    }, WEAPON_SEED);
 
-    // Pointermove over the item tile (9,3) — viewport (832, 400) at default camera.
     await page.evaluate(() => {
       document.querySelector('canvas')!.dispatchEvent(
         new PointerEvent('pointermove', {
-          clientX: 832, clientY: 400,
+          clientX: window.innerWidth / 2,
+          clientY: window.innerHeight / 2,
           pointerType: 'mouse', pointerId: 1, bubbles: true, cancelable: true,
         }),
       );
@@ -46,42 +56,30 @@ test.describe('loot pipeline (v0.4.0 — pickup goes into bag)', () => {
     await expect(tip).toContainText('of Malice');
   });
 
-  test('walking onto a ground item then clicking it picks up into the bag', async ({ page }) => {
+  test('clicking a ground item on the player tile picks it up into the bag', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, VERSION);
 
     const initial = await page.evaluate(() => ({
       atk: window.__wyrdloom.playerAtk,
       bag: window.__wyrdloom.inventory,
-      equipped: window.__wyrdloom.equipped,
     }));
     expect(initial.atk).toBe(25);
     expect(initial.bag).toHaveLength(0);
-    expect(initial.equipped).toHaveLength(0);
 
-    await page.evaluate((s) => window.__wyrdloom.dev.forceDrop(s), WEAPON_SEED);
+    await page.evaluate((s) => {
+      const p = window.__wyrdloom.playerTile;
+      window.__wyrdloom.dev.forceDrop(s, p);
+    }, WEAPON_SEED);
 
-    // First click: walk to (9,3). From (6,6), that's viewport (832, 400).
+    // Click the canvas centered on viewport — that's the camera-tracked
+    // player tile, which now also has the item.
     await page.evaluate(() => {
       document.querySelector('canvas')!.dispatchEvent(
         new PointerEvent('pointerdown', {
-          clientX: 832, clientY: 400, button: 0,
-          pointerType: 'mouse', pointerId: 1, bubbles: true, cancelable: true,
-        }),
-      );
-    });
-    await page.waitForFunction(
-      () => window.__wyrdloom.playerTile.tx === 9 && window.__wyrdloom.playerTile.ty === 3,
-      undefined,
-      { timeout: 3000 },
-    );
-
-    // Second click: pickup. Camera now centered on (9,3), so viewport (640,400)
-    // maps to (9,3) which has both player and item.
-    await page.evaluate(() => {
-      document.querySelector('canvas')!.dispatchEvent(
-        new PointerEvent('pointerdown', {
-          clientX: 640, clientY: 400, button: 0,
+          clientX: window.innerWidth / 2,
+          clientY: window.innerHeight / 2,
+          button: 0,
           pointerType: 'mouse', pointerId: 1, bubbles: true, cancelable: true,
         }),
       );
@@ -91,10 +89,8 @@ test.describe('loot pipeline (v0.4.0 — pickup goes into bag)', () => {
     const after = await page.evaluate(() => ({
       atk: window.__wyrdloom.playerAtk,
       bag: window.__wyrdloom.inventory,
-      equipped: window.__wyrdloom.equipped,
       ground: window.__wyrdloom.groundItems,
     }));
-    // Item is in the bag — but NOT auto-equipped, so atk stays at base 25.
     expect(after.bag).toHaveLength(1);
     expect(after.bag[0]).toMatchObject({
       name: 'Honed Iron Sword of Malice',
@@ -102,7 +98,7 @@ test.describe('loot pipeline (v0.4.0 — pickup goes into bag)', () => {
       x: 0,
       y: 0,
     });
-    expect(after.equipped).toHaveLength(0);
+    // Pickup is bag-only in v0.4.0+; equipping is a separate panel click.
     expect(after.atk).toBe(25);
     expect(after.ground).toHaveLength(0);
   });

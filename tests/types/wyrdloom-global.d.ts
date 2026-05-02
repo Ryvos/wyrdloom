@@ -44,6 +44,15 @@ interface Window {
       y: number;
     }>;
     readonly hotbar: ReadonlyArray<{ skillId: string; label: string } | null>;
+    readonly dungeon: {
+      seed: string;
+      w: number;
+      h: number;
+      roomCount: number;
+      entrance: { tx: number; ty: number };
+      boss: { tx: number; ty: number };
+    };
+    isFloor(tx: number, ty: number): boolean;
     readonly dev: {
       setPlayerHp(n: number): void;
       forceDrop(seed: string, tile?: { tx: number; ty: number }): void;
@@ -52,6 +61,10 @@ interface Window {
       closeAllPanels(): void;
       equipFromInventoryByUid(uid: string): void;
       unequipSlot(slot: 'weapon' | 'head' | 'chest' | 'ring'): void;
+      walkTo(tx: number, ty: number): number;
+      teleportPlayer(tx: number, ty: number): boolean;
+      teleportEnemy(id: string, tx: number, ty: number): boolean;
+      attackEnemy(id: string): boolean;
     };
   };
 }

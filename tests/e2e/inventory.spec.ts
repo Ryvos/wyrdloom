@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 // Same offline-probed seed as the loot tests — Honed Iron Sword of Malice.
 const WEAPON_SEED = 'weapon-seed-17';
 
@@ -127,7 +127,8 @@ test.describe('inventory + character panels (v0.4.0)', () => {
     expect(after.bag).toHaveLength(0);
     expect(after.ground[0]).toMatchObject({
       name: 'Honed Iron Sword of Malice',
-      tile: { tx: 6, ty: 6 },
+      // v0.5.0: dropped on the player's spawn tile (entrance room center).
+      tile: { tx: 8, ty: 4 },
     });
   });
 });

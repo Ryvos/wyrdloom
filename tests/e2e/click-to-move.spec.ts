@@ -1,9 +1,14 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const TARGET_VERSION = '0.4.0';
+const TARGET_VERSION = '0.5.0';
 
-test.describe('boot + movement', () => {
+// Default seed produces a deterministic dungeon — entrance (8,4), boss (28,26)
+// in a 32×32 grid. Tests that need a specific layout should pin to this seed.
+const ENTRANCE = { tx: 8, ty: 4 };
+const BOSS = { tx: 28, ty: 26 };
+
+test.describe('boot + procgen', () => {
   test('boots without console errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('console', (msg) => {
@@ -18,118 +23,111 @@ test.describe('boot + movement', () => {
     expect(errors).toEqual([]);
   });
 
-  test('player spawns at (6,6) with full hp', async ({ page }) => {
+  test('player spawns in the entrance room with full hp', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, TARGET_VERSION);
     const state = await page.evaluate(() => ({
       tile: window.__wyrdloom.playerTile,
       hp: window.__wyrdloom.playerHp,
       alive: window.__wyrdloom.playerAlive,
+      entrance: window.__wyrdloom.dungeon.entrance,
     }));
-    expect(state).toEqual({ tile: { tx: 6, ty: 6 }, hp: 100, alive: true });
+    expect(state.tile).toEqual(ENTRANCE);
+    expect(state.entrance).toEqual(ENTRANCE);
+    expect(state.hp).toBe(100);
+    expect(state.alive).toBe(true);
   });
 
-  test('enemy spawns at (9,3) with full hp', async ({ page }) => {
+  test('enemy spawns in the boss room with full hp', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, TARGET_VERSION);
     const enemies = await page.evaluate(() => window.__wyrdloom.enemies);
     expect(enemies).toEqual([
-      { id: 'enemy-0', tile: { tx: 9, ty: 3 }, hp: 50, alive: true },
+      { id: 'enemy-0', tile: BOSS, hp: 50, alive: true },
     ]);
   });
 
-  test('left-click on empty tile sets goal and walks player', async ({ page }) => {
+  test('default seed produces 9 rooms in a 32x32 grid', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, TARGET_VERSION);
-
-    // Click southwest — viewport (480, 400) maps to tile (4, 9) when camera is
-    // centered on player (6,6) in a 1280x800 viewport; both axes are inside the
-    // 12x12 grid so the click handler accepts the goal.
-    await page.evaluate(() => {
-      document.querySelector('canvas')!.dispatchEvent(
-        new PointerEvent('pointerdown', {
-          clientX: 480, clientY: 400, button: 0,
-          pointerType: 'mouse', pointerId: 1, bubbles: true, cancelable: true,
-        }),
-      );
+    const d = await page.evaluate(() => window.__wyrdloom.dungeon);
+    expect(d).toMatchObject({
+      seed: 'catacombs-1',
+      w: 32,
+      h: 32,
+      roomCount: 9,
     });
-
-    const goal = await page.evaluate(() => window.__wyrdloom.goal);
-    expect(goal).not.toBeNull();
-    expect(goal).not.toEqual({ tx: 6, ty: 6 });
-
-    // Wait for player to reach goal (or to come close).
-    await page.waitForFunction(
-      () => window.__wyrdloom.goal === null,
-      undefined,
-      { timeout: 4000 },
-    );
   });
 
-  test('out-of-bounds clicks are ignored', async ({ page }) => {
+  test('walls reject clicks; floor clicks set a goal', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, TARGET_VERSION);
 
-    await page.evaluate(() => {
-      document.querySelector('canvas')!.dispatchEvent(
-        new PointerEvent('pointerdown', {
-          clientX: 10, clientY: 10, button: 0,
-          pointerType: 'mouse', pointerId: 1, bubbles: true, cancelable: true,
-        }),
-      );
-    });
-    await page.waitForTimeout(150);
-    const { goal, target } = await page.evaluate(() => ({
-      goal: window.__wyrdloom.goal,
-      target: window.__wyrdloom.attackTarget,
-    }));
-    expect(goal).toBeNull();
-    expect(target).toBeNull();
+    // (0,0) is always a wall (border). walkTo() should return 0.
+    const wallLen = await page.evaluate(() => window.__wyrdloom.dev.walkTo(0, 0));
+    expect(wallLen).toBe(0);
+    expect(await page.evaluate(() => window.__wyrdloom.goal)).toBeNull();
+
+    // The boss room center is reachable; A* should return a long path.
+    const floorLen = await page.evaluate(
+      (b) => window.__wyrdloom.dev.walkTo(b.tx, b.ty),
+      BOSS,
+    );
+    expect(floorLen).toBeGreaterThan(20);
+    expect(await page.evaluate(() => window.__wyrdloom.goal)).toEqual(BOSS);
+  });
+
+  test('player walks the A* path to a distant goal', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForFunction((v) => window.__wyrdloom?.version === v, TARGET_VERSION);
+
+    // Walk to a known floor tile a couple of rooms over.
+    await page.evaluate((b) => window.__wyrdloom.dev.walkTo(b.tx, b.ty), BOSS);
+    await page.waitForFunction(
+      (b) => {
+        const t = window.__wyrdloom.playerTile;
+        return t.tx === b.tx && t.ty === b.ty;
+      },
+      BOSS,
+      { timeout: 10000 },
+    );
+    const finalTile = await page.evaluate(() => window.__wyrdloom.playerTile);
+    expect(finalTile).toEqual(BOSS);
   });
 });
 
-test.describe('combat', () => {
-  test('clicking enemy sets attackTarget and player kills it', async ({ page }) => {
+test.describe('combat (v0.5.0 — uses teleport for setup)', () => {
+  test('attacking the enemy via dev.attackEnemy kills it', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, TARGET_VERSION);
 
-    // Enemy at (9,3) maps to viewport (832, 400) when player is at (6,6) and the
-    // viewport is 1280x800 (camera centers on the player).
+    // Put the player + enemy adjacent in the entrance room so combat plays out
+    // without dungeon traversal (and without enemy AI hits during the walk).
     await page.evaluate(() => {
-      document.querySelector('canvas')!.dispatchEvent(
-        new PointerEvent('pointerdown', {
-          clientX: 832, clientY: 400, button: 0,
-          pointerType: 'mouse', pointerId: 1, bubbles: true, cancelable: true,
-        }),
-      );
+      window.__wyrdloom.dev.teleportPlayer(8, 4);
+      window.__wyrdloom.dev.teleportEnemy('enemy-0', 9, 4);
+      window.__wyrdloom.dev.attackEnemy('enemy-0');
     });
-    expect(await page.evaluate(() => window.__wyrdloom.attackTarget)).toBe('enemy-0');
 
-    // The player walks to melee range and kills (50 hp / 25 atk = 2 hits).
-    // Worst case: 6 walk steps (~900 ms) + 2 attacks (~800 ms) = ~1.7 s.
     await page.waitForFunction(
       () => window.__wyrdloom.enemies[0]?.alive === false,
       undefined,
       { timeout: 5000 },
     );
-
     const enemy = await page.evaluate(() => window.__wyrdloom.enemies[0]);
     expect(enemy!.alive).toBe(false);
     expect(enemy!.hp).toBe(0);
   });
 
-  test('enemy respawns within 4s of dying', async ({ page }) => {
+  test('enemy respawns within 4s of dying (on a random floor tile)', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, TARGET_VERSION);
 
-    // Trigger a kill.
+    // Trigger a kill via teleport + auto-attack.
     await page.evaluate(() => {
-      document.querySelector('canvas')!.dispatchEvent(
-        new PointerEvent('pointerdown', {
-          clientX: 832, clientY: 400, button: 0,
-          pointerType: 'mouse', pointerId: 1, bubbles: true, cancelable: true,
-        }),
-      );
+      window.__wyrdloom.dev.teleportPlayer(8, 4);
+      window.__wyrdloom.dev.teleportEnemy('enemy-0', 9, 4);
+      window.__wyrdloom.dev.attackEnemy('enemy-0');
     });
     await page.waitForFunction(
       () => window.__wyrdloom.enemies[0]?.alive === false,
@@ -137,7 +135,6 @@ test.describe('combat', () => {
       { timeout: 5000 },
     );
 
-    // Enemy respawns 3 s after death — wait up to 4.5 s and re-check.
     await page.waitForFunction(
       () => window.__wyrdloom.enemies[0]?.alive === true,
       undefined,
@@ -148,15 +145,13 @@ test.describe('combat', () => {
     expect(enemy!.hp).toBe(50);
   });
 
-  test('player death triggers respawn at (6,6) with full hp', async ({ page }) => {
+  test('player death respawns at entrance room with full hp', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, TARGET_VERSION);
 
-    // Force player death via the dev hook.
     await page.evaluate(() => window.__wyrdloom.dev.setPlayerHp(0));
     expect(await page.evaluate(() => window.__wyrdloom.playerAlive)).toBe(false);
 
-    // 2 s respawn timer.
     await page.waitForFunction(
       () => window.__wyrdloom.playerAlive === true,
       undefined,
@@ -168,7 +163,7 @@ test.describe('combat', () => {
       hp: window.__wyrdloom.playerHp,
       alive: window.__wyrdloom.playerAlive,
     }));
-    expect(state).toEqual({ tile: { tx: 6, ty: 6 }, hp: 100, alive: true });
+    expect(state).toEqual({ tile: ENTRANCE, hp: 100, alive: true });
   });
 
   test('hp readout reflects damage taken', async ({ page }) => {

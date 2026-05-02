@@ -2,10 +2,19 @@
 
 Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open-source**, **MIT-licensed**, **no telemetry**, **no microtransactions**, **no online-only DRM**. Ships as both a browser demo and signed native desktop binaries from the same TypeScript source.
 
-> Status: **v0.4.0 — Week 4: inventory + character + hotbar + bind.** Loot pipeline from v0.3.0 + 10×4 D2 inventory grid + paper-doll character sheet + 4-slot skill hotbar + skill-binding flow. All HUD panels are Lit 3 web components. See `RELEASE_NOTES_v0.4.md`.
+> Status: **v0.5.0 — Week 5: BSP procgen + Catacombs + A* pathfinding.** 32×32 dungeon generated from a deterministic seed; flood-fill validator gates layout; A* drives both player click-to-walk and enemy chase; Catacombs `ColorMatrixFilter` color grade. See `RELEASE_NOTES_v0.5.md`.
 
-![v0.4.0 inventory screenshot](docs/v0.4.0-inventory.png)
-![v0.4.0 character screenshot](docs/v0.4.0-character.png)
+![v0.5.0 dungeon spike](docs/v0.5.0-spike.png)
+
+## What's in v0.5.0
+
+- **BSP procgen** (`src/systems/procgen.ts`): recursive bounds-split → rooms + L-shaped corridors. Deterministic via `seedrandom` — `catacombs-1` produces a 9-room, 32×32 dungeon every time
+- **Flood-fill validator** runs *before* the generator yields; rerolls up to 16 times with a salted seed (`seed#r1`, `seed#r2`, ...) if any floor cell is unreachable
+- **A* pathfinding** (`src/systems/pathfinding.ts`): 4-connected uniform-cost grid, Manhattan heuristic. Player click-to-walk and enemy chase both route around walls
+- Catacombs Pixi tile renderer (`src/fx/tiles.ts`): floor diamonds + 22-px stacked wall blocks. Wall culling skips ~70% of unexposed walls
+- Catacombs `ColorMatrixFilter` on the world container (cool blue-grey, dimmed); HUD remains full-saturation
+- Player + enemy spawn placement: player in entrance room, enemy in boss room
+- 16 new unit tests (procgen + pathfinding) + 6 new dungeon e2e tests across Chromium + WebKit
 
 ## What's in v0.4.0
 
@@ -65,18 +74,18 @@ Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open
 | Tests | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) |
 | Pkg mgr | [bun](https://bun.sh) (preferred) — `pnpm` fallback |
 
-## Controls (v0.4.0)
+## Controls (v0.5.0)
 
 | Action | Binding |
 |---|---|
-| Move | Left-click an empty tile |
-| Attack enemy | Left-click an enemy (player walks into melee, then auto-attacks) |
-| Walk to loot | Left-click a ground item — player walks there |
+| Move | Left-click a floor tile — A* routes around walls |
+| Attack enemy | Left-click an enemy — player A*-walks into melee, then auto-attacks |
+| Walk to loot | Left-click a ground item — player A*-walks there |
 | Pick up loot | Left-click a ground item *while standing on it* — goes into the bag (no auto-equip) |
 | Inspect ground loot | Hover a ground item — tooltip shows name, base stat, affixes, and current-equipped compare |
 | Inventory | `I` toggles the 10×4 bag panel; left-click a cell to equip; right-click to drop on the floor |
 | Character | `C` toggles the paper-doll panel; click an equipped slot to unequip back to the bag |
-| Hotbar | Keys 1-4 trigger bound skills (only `melee` exists in v0.4.0); left-click slot opens bind flow; right-click clears |
+| Hotbar | Keys 1-4 trigger bound skills (only `melee` exists today); left-click slot opens bind flow; right-click clears |
 | Close panel | `Esc` closes every open panel |
 | Quit | Close the window — there's no menu yet |
 

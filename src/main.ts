@@ -1,14 +1,17 @@
-// WYRDLOOM v0.4.0 — Week 4: inventory + character + hotbar + bind-skill.
-// New in v0.4.0: pickup goes into a 10×4 bag (Lit panel I), paper-doll
-// character sheet (panel C), 4-slot skill hotbar with bind flow.
+// WYRDLOOM v0.5.0 — Week 5: BSP procgen + Catacombs + A* pathfinding.
+// New in v0.5.0: dungeon-generated tile map (32×32), wall-blocking, A*-driven
+// click-to-walk + enemy chase, ColorMatrixFilter color grade.
 
-import { Application, Container, Graphics, type FederatedPointerEvent } from 'pixi.js';
+import { Application, Container, Graphics, ColorMatrixFilter, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
 import type { TileCoord } from './engine/iso';
 import { makeActor, PLAYER_STATS, ENEMY_STATS } from './actors/Actor';
 import type { Actor } from './actors/Actor';
 import { canAttack, performAttack, distanceBetween, respawn } from './systems/combat';
-import { tickEnemy, stepToward } from './systems/ai';
+import { tickEnemy } from './systems/ai';
+import { generateDungeon, isFloor, roomCenter, type DungeonMap } from './systems/procgen';
+import { findPath, type PathfindGrid, type PathTile } from './systems/pathfinding';
+import { drawDungeon } from './fx/tiles';
 import { makePlayerSprite, makeEnemySprite, makeHitFlash } from './fx/sprites';
 import { spawnDamagePopup } from './fx/damage_popup';
 import { mountHpBar } from './ui/hp_bar';
@@ -46,9 +49,9 @@ import './ui/character_panel';
 import './ui/hotbar';
 import './ui/bind_panel';
 
-const GRID_W = 12;
-const GRID_H = 12;
-const PLAYER_SPAWN: TileCoord = { tx: 6, ty: 6 };
+const DUNGEON_W = 32;
+const DUNGEON_H = 32;
+const DEFAULT_DUNGEON_SEED = 'catacombs-1';
 const RESPAWN_PLAYER_DELAY_MS = 2000;
 const RESPAWN_ENEMY_DELAY_MS = 3000;
 
@@ -69,11 +72,17 @@ interface World {
   readonly player: ActorView;
   readonly enemies: ActorView[];
   readonly inventory: Inventory;
+  readonly dungeon: DungeonMap;
+  readonly grid: PathfindGrid;
   groundItems: GroundItemView[];
   playerDeadAt: number;
   enemyRespawnQueue: { id: string; spawnAt: number }[];
   killCount: number; // drives loot seed
   hoveringItemId: string | null;
+  // Cached path for the player. Recomputed when goal/attackTarget changes.
+  // path[0] is the player's current tile; path[1+] are upcoming steps.
+  playerPath: PathTile[] | null;
+  playerPathIx: number;
 }
 
 async function main(): Promise<void> {
@@ -98,19 +107,34 @@ async function main(): Promise<void> {
   const world = new Container();
   world.label = 'world';
   world.sortableChildren = true;
+  // Catacombs color grade — cool, dim, pulled toward blue/grey. The matrix is
+  // applied to the entire world container so actors + tiles + UI overlays
+  // (hp bar, tooltip) are unaffected since they live in #hud.
+  world.filters = [makeCatacombsGrade()];
   camera.addChild(world);
 
-  drawTileGrid(world, GRID_W, GRID_H);
+  // Generate the dungeon (validator + reroll baked in) and render it.
+  const dungeon = generateDungeon({ w: DUNGEON_W, h: DUNGEON_H, seed: DEFAULT_DUNGEON_SEED });
+  drawDungeon(world, dungeon);
 
   const target = new Graphics();
   target.visible = false;
   world.addChild(target);
 
-  // Spawn actors.
-  const playerActor = makeActor('player', 'player', PLAYER_STATS, PLAYER_SPAWN);
+  // Pathfinding grid backed by the dungeon's wall/floor tiles.
+  const grid: PathfindGrid = {
+    w: dungeon.w,
+    h: dungeon.h,
+    isWalkable: (tx, ty): boolean => isFloor(dungeon, tx, ty),
+  };
+
+  // Spawn actors. Player starts in the entrance room; enemy in the boss room.
+  const playerSpawn = roomCenter(dungeon.entrance);
+  const playerActor = makeActor('player', 'player', PLAYER_STATS, playerSpawn);
   const playerView = mountActorView(world, playerActor, makePlayerSprite());
 
-  const enemyActor = makeActor('enemy-0', 'enemy', ENEMY_STATS, { tx: 9, ty: 3 });
+  const enemySpawn = roomCenter(dungeon.boss);
+  const enemyActor = makeActor('enemy-0', 'enemy', ENEMY_STATS, enemySpawn);
   const enemyView = mountActorView(world, enemyActor, makeEnemySprite());
 
   const hpBar = mountHpBar(hud);
@@ -130,11 +154,15 @@ async function main(): Promise<void> {
     player: playerView,
     enemies: [enemyView],
     inventory: makeInventory(),
+    dungeon,
+    grid,
     groundItems: [],
     playerDeadAt: 0,
     enemyRespawnQueue: [],
     killCount: 0,
     hoveringItemId: null,
+    playerPath: null,
+    playerPathIx: 0,
   };
 
   // Mount Lit panels into #hud. They're hidden until toggled.
@@ -216,7 +244,20 @@ async function main(): Promise<void> {
         b ? { skillId: b.skillId, label: b.label } : null,
       );
     },
-    version: '0.4.0',
+    get dungeon() {
+      return {
+        seed: W.dungeon.seed,
+        w: W.dungeon.w,
+        h: W.dungeon.h,
+        roomCount: W.dungeon.rooms.length,
+        entrance: { ...roomCenter(W.dungeon.entrance) },
+        boss: { ...roomCenter(W.dungeon.boss) },
+      };
+    },
+    isFloor(tx: number, ty: number): boolean {
+      return isFloor(W.dungeon, tx, ty);
+    },
+    version: '0.5.0',
     dev: {
       setPlayerHp(n: number): void {
         playerActor.hp = Math.max(0, Math.min(playerActor.derivedStats.maxHp, n));
@@ -270,6 +311,41 @@ async function main(): Promise<void> {
       unequipSlot(slot: Slot): void {
         unequipToInventory(W, slot);
       },
+      // Tell the player to walk to a tile, bypassing canvas-coord math in
+      // tests. Returns the path length (or 0 if unreachable).
+      walkTo(tx: number, ty: number): number {
+        if (!isFloor(W.dungeon, tx, ty)) return 0;
+        setPlayerGoal(W, { tx, ty }, null);
+        return W.playerPath ? W.playerPath.length : 0;
+      },
+      // Teleport the player to an arbitrary floor tile. Used by combat e2e
+      // tests so they don't have to march through procgen dungeons.
+      teleportPlayer(tx: number, ty: number): boolean {
+        if (!isFloor(W.dungeon, tx, ty)) return false;
+        playerActor.tile = { tx, ty };
+        playerActor.goal = null;
+        playerActor.attackTarget = null;
+        W.playerPath = null;
+        placeActorNode(W.player.node, playerActor);
+        centerCamera(W.app, W.camera, playerActor.tile);
+        return true;
+      },
+      teleportEnemy(id: string, tx: number, ty: number): boolean {
+        if (!isFloor(W.dungeon, tx, ty)) return false;
+        const view = W.enemies.find((v) => v.actor.id === id);
+        if (!view) return false;
+        view.actor.tile = { tx, ty };
+        placeActorNode(view.node, view.actor);
+        return true;
+      },
+      // Set the player's attackTarget directly — equivalent to clicking the
+      // enemy on a tile we know they're occupying.
+      attackEnemy(id: string): boolean {
+        const view = W.enemies.find((v) => v.actor.id === id && v.actor.alive);
+        if (!view) return false;
+        setPlayerGoal(W, { ...view.actor.tile }, view.actor.id);
+        return true;
+      },
     },
   };
 }
@@ -294,7 +370,7 @@ function bindClickHandler(W: World): void {
     const local = W.world.toLocal(e.global);
     const tile = roundTile(...Object.values(screenToTile(local.x, local.y)) as [number, number]);
 
-    if (tile.tx < 0 || tile.ty < 0 || tile.tx >= GRID_W || tile.ty >= GRID_H) return;
+    if (tile.tx < 0 || tile.ty < 0 || tile.tx >= W.dungeon.w || tile.ty >= W.dungeon.h) return;
 
     // 1) Ground item on this tile? Pick it up if the player is here too,
     // otherwise walk to it (loot pickup is on contact).
@@ -308,29 +384,41 @@ function bindClickHandler(W: World): void {
       ) {
         pickUp(W, groundHere);
       } else {
-        W.player.actor.attackTarget = null;
-        W.player.actor.goal = tile;
-        showTarget(W, tile, false);
+        setPlayerGoal(W, tile, null);
       }
       return;
     }
 
-    // 2) Alive enemy? Engage.
+    // 2) Alive enemy? Engage. Enemies stand on floor cells so the path
+    // computed below will reach them. The combat tick stops one tile short.
     const enemyHere = W.enemies.find(
       (v) => v.actor.alive && v.actor.tile.tx === tile.tx && v.actor.tile.ty === tile.ty,
     );
     if (enemyHere) {
-      W.player.actor.attackTarget = enemyHere.actor.id;
-      W.player.actor.goal = { ...enemyHere.actor.tile };
+      setPlayerGoal(W, { ...enemyHere.actor.tile }, enemyHere.actor.id);
       showTarget(W, tile, true);
       return;
     }
 
-    // 3) Empty tile — walk.
-    W.player.actor.attackTarget = null;
-    W.player.actor.goal = tile;
+    // 3) Walls reject the click — nothing happens, mirror v0.4.0 OOB behavior.
+    if (!isFloor(W.dungeon, tile.tx, tile.ty)) return;
+
+    // 4) Empty floor — walk.
+    setPlayerGoal(W, tile, null);
     showTarget(W, tile, false);
   });
+}
+
+// Set the player's goal + attack target and recompute the A* path. Single
+// entry point so we can't accidentally update goal without invalidating path.
+function setPlayerGoal(W: World, goal: TileCoord, attackTarget: string | null): void {
+  const player = W.player.actor;
+  player.attackTarget = attackTarget;
+  player.goal = goal;
+  const path = findPath(W.grid, player.tile, goal);
+  W.playerPath = path;
+  W.playerPathIx = path ? 0 : 0; // 0 = current tile; advance from index 1
+  if (path) showTarget(W, goal, attackTarget !== null);
 }
 
 function bindHoverHandler(W: World): void {
@@ -513,7 +601,10 @@ function bindKeyboard(): void {
 function onTick(W: World, nowMs: number): void {
   // Player respawn timer.
   if (!W.player.actor.alive && W.playerDeadAt > 0 && nowMs - W.playerDeadAt >= RESPAWN_PLAYER_DELAY_MS) {
-    respawn(W.player.actor, PLAYER_SPAWN);
+    const spawn = roomCenter(W.dungeon.entrance);
+    respawn(W.player.actor, spawn);
+    W.playerPath = null;
+    W.playerPathIx = 0;
     W.playerDeadAt = 0;
     placeActorNode(W.player.node, W.player.actor);
     centerCamera(W.app, W.camera, W.player.actor.tile);
@@ -529,7 +620,7 @@ function onTick(W: World, nowMs: number): void {
     if (nowMs >= slot.spawnAt) {
       const view = W.enemies.find((v) => v.actor.id === slot.id);
       if (view) {
-        const t = randomEdgeTile();
+        const t = randomFloorTile(W);
         respawn(view.actor, t);
         view.node.visible = true;
         placeActorNode(view.node, view.actor);
@@ -543,9 +634,9 @@ function onTick(W: World, nowMs: number): void {
     tickPlayer(W, nowMs);
   }
 
-  // Enemy AI.
+  // Enemy AI — pass the grid so enemies path around walls.
   for (const view of W.enemies) {
-    const result = tickEnemy(view.actor, W.player.actor, nowMs);
+    const result = tickEnemy(view.actor, W.player.actor, nowMs, W.grid);
     if (result.moved) placeActorNode(view.node, view.actor);
     if (result.damage) {
       flashHit(W.player, nowMs);
@@ -573,6 +664,7 @@ function tickPlayer(W: World, nowMs: number): void {
     if (!targetView || !targetView.actor.alive) {
       player.attackTarget = null;
       player.goal = null;
+      W.playerPath = null;
       W.target.visible = false;
     } else if (distanceBetween(player, targetView.actor) <= player.stats.atkRange) {
       if (canAttack(player, targetView.actor, nowMs)) {
@@ -584,6 +676,7 @@ function tickPlayer(W: World, nowMs: number): void {
           targetView.node.visible = false;
           player.attackTarget = null;
           player.goal = null;
+          W.playerPath = null;
           W.target.visible = false;
           // Roll a drop. Seed includes kill count so each kill is independent.
           W.killCount += 1;
@@ -604,22 +697,37 @@ function tickPlayer(W: World, nowMs: number): void {
       }
       return; // adjacent — don't try to move into the enemy
     } else {
-      // Out of range — make sure goal tracks the moving enemy.
-      player.goal = { ...targetView.actor.tile };
+      // Out of range — re-path to the (possibly moving) target each tick.
+      const targetTile = targetView.actor.tile;
+      if (
+        !player.goal ||
+        player.goal.tx !== targetTile.tx ||
+        player.goal.ty !== targetTile.ty ||
+        !W.playerPath
+      ) {
+        player.goal = { ...targetTile };
+        W.playerPath = findPath(W.grid, player.tile, player.goal);
+        W.playerPathIx = 0;
+      }
     }
   }
 
-  // 2) Move toward goal on cooldown.
-  if (!player.goal) return;
+  // 2) Walk the cached path on cooldown.
+  if (!W.playerPath || !player.goal) return;
   if (nowMs - player.lastMoveAt < player.stats.moveCooldownMs) return;
 
-  if (player.goal.tx === player.tile.tx && player.goal.ty === player.tile.ty) {
+  // path[0] is current tile; advance the index to step path[ix+1].
+  const nextIx = W.playerPathIx + 1;
+  const next = W.playerPath[nextIx];
+  if (!next) {
+    // Reached the end of the path.
     player.goal = null;
+    W.playerPath = null;
     W.target.visible = false;
     return;
   }
-  const next = stepToward(player.tile, player.goal);
-  player.tile = next;
+  player.tile = { tx: next.tx, ty: next.ty };
+  W.playerPathIx = nextIx;
   player.lastMoveAt = nowMs;
   placeActorNode(W.player.node, player);
   centerCamera(W.app, W.camera, player.tile);
@@ -665,38 +773,29 @@ function centerCamera(app: Application, camera: Container, tile: TileCoord): voi
   camera.position.set(app.screen.width / 2 - sx, app.screen.height / 2 - sy);
 }
 
-function drawTileGrid(world: Container, w: number, h: number): void {
-  for (let ty = 0; ty < h; ty++) {
-    for (let tx = 0; tx < w; tx++) {
-      const tile = drawDiamond((tx + ty) % 2 === 0 ? 0x2c2a26 : 0x35322d, 0x4a463d);
-      const { sx, sy } = tileToScreen(tx, ty);
-      tile.position.set(sx, sy);
-      tile.zIndex = depthFor(tx, ty);
-      world.addChild(tile);
-    }
+// Catacombs color grade — pulled toward cool blue-grey, slightly desaturated,
+// dimmed. Applied to the world container (tiles + actors); HUD is unaffected.
+function makeCatacombsGrade(): ColorMatrixFilter {
+  const f = new ColorMatrixFilter();
+  // Slight desaturation
+  f.saturate(-0.25, false);
+  // Cool the palette by tinting blue-green
+  f.tint(0x9aa6c0, true);
+  // Dim overall brightness
+  f.brightness(0.85, true);
+  return f;
+}
+
+// Random walkable tile, used for enemy respawn placement. Limited tries; falls
+// back to the boss room if the dungeon is somehow extremely sparse (shouldn't
+// happen — validator guarantees at least one connected component).
+function randomFloorTile(W: World): TileCoord {
+  for (let i = 0; i < 64; i++) {
+    const tx = Math.floor(Math.random() * W.dungeon.w);
+    const ty = Math.floor(Math.random() * W.dungeon.h);
+    if (isFloor(W.dungeon, tx, ty)) return { tx, ty };
   }
-}
-
-function drawDiamond(fill: number, stroke: number): Graphics {
-  const g = new Graphics();
-  g.poly([
-    { x: 0, y: -TILE_H / 2 },
-    { x: TILE_W / 2, y: 0 },
-    { x: 0, y: TILE_H / 2 },
-    { x: -TILE_W / 2, y: 0 },
-  ]);
-  g.fill(fill);
-  g.stroke({ color: stroke, width: 1, alpha: 0.6 });
-  return g;
-}
-
-function randomEdgeTile(): TileCoord {
-  const edge = Math.floor(Math.random() * 4);
-  const r = Math.floor(Math.random() * GRID_W);
-  if (edge === 0) return { tx: r, ty: 0 };
-  if (edge === 1) return { tx: r, ty: GRID_H - 1 };
-  if (edge === 2) return { tx: 0, ty: r };
-  return { tx: GRID_W - 1, ty: r };
+  return roomCenter(W.dungeon.boss);
 }
 
 function updateDebug(W: World): void {

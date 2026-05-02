@@ -2,125 +2,60 @@
 
 Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open-source**, **MIT-licensed**, **no telemetry**, **no microtransactions**, **no online-only DRM**. Ships as both a browser demo and signed native desktop binaries from the same TypeScript source.
 
-> Status: **v0.7.0 — Week 7: Furyborn class + Frostvein zone + Worm-Mother Vyl + SaveAdapter v2.** Player is now a Furyborn (Strength / Rage). Three working skills (Cleave, Whirlwind, Charge); three reserved (Battle Roar, Frenzy, Execute). New Frostvein ice-cave biome reachable from Whitestone via the east doorway. Worm-Mother Vyl 3-phase Act-II final boss in the Frostvein boss room. SaveAdapter schema bumped to v2 with the first migration (legacy v1 → Furyborn default). See `RELEASE_NOTES_v0.7.md`.
+> Status: **v1.0.0 — launch.** Three playable classes (Furyborn / Frostmark / Sealwarden), three acts (Whitestone hub → Catacombs → Frostvein → Cinderfall), an endless endgame (The Echo with the Pinnacle on floor 5), full loot pipeline (common / magic / rare / unique / mythic with sockets + gems + the Imbuer), Hardcore mode, accessibility (color-blind presets, reduce-motion, font scale), and a remappable settings panel. See [`RELEASE_NOTES_v1.0.md`](RELEASE_NOTES_v1.0.md).
+
+**Browser play:** https://ryvos.github.io/wyrdloom/ (Chrome / Firefox / Safari)
 
 ![v0.5.0 dungeon spike](docs/v0.5.0-spike.png)
 
-## What's in v0.7.0
+## Quick start
 
-- **Class system** (`src/types/class.ts` + `src/systems/class.ts`): `ClassId × ResourceId × ClassStat` discriminated metadata. Class-baselined `ActorStats` (Furyborn: 120 HP, 28 atk, 450 ms cd). `makePlayerActor(classId, tile)` factory wires class + resource on construction
-- **Furyborn (Strength / Rage)**: 6 authored skills in `src/systems/skills.ts`. Cleave (basic / left-click, 0 cost, +12 rage on hit), Whirlwind (25 rage, 1.5 s cd, AoE all 4-adjacent enemies × 0.7 atk), Charge (30 rage, 4 s cd, 5-tile dash along the A* path). Battle Roar / Frenzy / Execute reserved + grayed-out in the bind panel — effects land in v0.7.x
-- **Resource bar HUD** (`src/ui/resource_bar.ts`) above the HP bar; per-class color (Rage = `#c44a2a`). Drain-out-of-combat at 3/s, build on landed hits, capped at class `resourceMax`
-- **Frostvein zone** (`src/levels/frostvein.ts`): BSP procgen with seed `frostvein-1`, deterministic across reloads. Cool-blue `ColorMatrixFilter` color grade — brighter than Catacombs, distinctly icier
-- **Whitestone east doorway** opens to Frostvein; Whitestone south doorway still goes to Catacombs. Two dungeons reachable from the hub
-- **Worm-Mother Vyl** (`WORM_MOTHER_STATS` + `WORM_MOTHER_PHASE_MODS`): 240 HP, 16 atk, 1100 ms cd, monster level 16. 3-phase curve distinct from Hollow Bishop — bulkier baseline, lighter mid-fight ramp (×1.2 / ×0.85), brutal phase-3 cooldown crush (×1.7 / ×0.55). Drops a guaranteed boss-tier item with seed `boss-worm-mother-${killCount}`
-- **Boss-drop guarantee** (`rollDrop({ guaranteed: true })`) — per spec §4.4 Act-final bosses always drop, skipping the chance roll
-- **`q-act2-vyl` quest** chains after `q-act1-bishop` via `activateNextMainAfter`. Sequential main-quest unlock now spans Acts I and II
-- **SaveAdapter v2** — `SAVE_SCHEMA_VERSION = 2`, adds `classId` + `resource` to `SaveState`. First entry in `MIGRATIONS` table: v1 → v2 silently promotes legacy saves to Furyborn / 0 rage
-- **1 new unit test** (1→2 migration), **8 new e2e tests** (`furyborn_frostvein.spec.ts`) covering class boot, resource bar paint, rage gain on hit, Frostvein determinism, Worm-Mother kill, save/load round-trip with class
-- **Tests: 68/68 unit, 86/86 e2e** across Chromium + WebKit
+```bash
+git clone https://github.com/Ryvos/wyrdloom
+cd wyrdloom
+bun install
+bun run dev          # http://127.0.0.1:1420
+```
 
-## What's in v0.6.0
-
-- **Zone system** (`src/systems/zone.ts`): doorway tiles transition the player between zones; per-zone player entry tile, NPC list, and color grade
-- **Whitestone hub** (`src/levels/whitestone.ts`): hand-authored 16×16 town courtyard with the Quest-board NPC; warm color filter contrasts with the cold catacombs grade
-- **Catacombs zone** (`src/levels/catacombs.ts`): wraps v0.5.0 BSP procgen; doorway returns the player next to the Whitestone south gate
-- **NPC system** (`src/actors/Npc.ts` + `src/fx/npc_sprite.ts`): `questboard` NPC kind ships in v0.6.0; `smith`, `imbuer`, `stash` placeholders ready for v0.7.0–v0.8.0
-- **Quest system** (`src/systems/quests.ts` + `data/quests.json`): four authored quests — intro `q-intro-descend` (auto-active, completes on first catacombs entry), `q-act1-bones` (kill 3 grunts), `q-act1-relic` (rare pickup), `q-act1-bishop` (boss kill). Sequential main-quest unlock chain via `activateNextMainAfter`
-- **Quest tracker HUD** (`src/ui/quest_tracker.ts`): compact lowest-order-active view; `Q` toggles expanded all-quests panel
-- **NPC dialog HUD** (`src/ui/npc_dialog.ts`): Quest-board renders the active + completed quest list; `Esc` closes
-- **Hollow Bishop boss** (`src/actors/Actor.ts` + `src/fx/sprites.ts`): 200 HP, 3-phase combat at 67% / 33% HP thresholds — atk scales 1.0 → 1.4 → 1.8 and cooldown shrinks 1.0 → 0.8 → 0.65. No respawn; guaranteed boss-tier drop
-- **SaveAdapter v1** (`src/platform/SaveAdapter.ts`): 5 character slots, schema-versioned migrate() walker, `WebSaveAdapter` (IndexedDB via `idb`) live on web, `TauriSaveAdapter` (FS plugin) wired for native. `S` saves in the hub; auto-save fires on zone change, equip/unequip, and boss kill
-- **17 new unit tests** (10 quests + 7 save_adapter) and **8 new e2e tests** (hub_quests.spec.ts) — 67/67 unit and 72/72 e2e green across Chromium + WebKit
-
-## What's in v0.5.0
-
-- **BSP procgen** (`src/systems/procgen.ts`): recursive bounds-split → rooms + L-shaped corridors. Deterministic via `seedrandom` — `catacombs-1` produces a 9-room, 32×32 dungeon every time
-- **Flood-fill validator** runs *before* the generator yields; rerolls up to 16 times with a salted seed (`seed#r1`, `seed#r2`, ...) if any floor cell is unreachable
-- **A* pathfinding** (`src/systems/pathfinding.ts`): 4-connected uniform-cost grid, Manhattan heuristic. Player click-to-walk and enemy chase both route around walls
-- Catacombs Pixi tile renderer (`src/fx/tiles.ts`): floor diamonds + 22-px stacked wall blocks. Wall culling skips ~70% of unexposed walls
-- Catacombs `ColorMatrixFilter` on the world container (cool blue-grey, dimmed); HUD remains full-saturation
-- Player + enemy spawn placement: player in entrance room, enemy in boss room
-- 16 new unit tests (procgen + pathfinding) + 6 new dungeon e2e tests across Chromium + WebKit
-
-## What's in v0.4.0
-
-- 10×4 inventory grid (`src/systems/bag.ts`) with item-footprint API — 1×1 today, multi-cell ready for v0.5.0
-- Pickup → bag (no auto-equip); equip is an explicit click on the inventory cell. Replaced gear returns to bag, or drops to floor if bag is now full
-- Paper-doll character sheet with weapon/head/chest/ring slots + derived-stat readout (`Attack 44 (base 25 +19)` style deltas)
-- 4-slot skill hotbar at bottom-center; keys 1-4; click empty slot opens bind flow; right-click clears
-- Bind-skill panel listing available skills (`melee` only in v0.4.0; full four-skill set in v0.5.0)
-- DOM panels using **Lit 3.x** Web Components — `I` toggles inventory, `C` toggles character, `Esc` closes everything
-- One-way game-state bridge (`src/ui/store.ts`): panels read state + emit intents, game loop writes state and routes effects
-- HUD reshuffle: HP bar bottom-left, hotbar bottom-center, debug top-right
-- 7 new Vitest unit tests for `bag.ts` placement / overflow / removal
-- 9 new Playwright e2e tests across inventory, character, and bind flows (Chromium + WebKit)
-
-## What's in v0.3.0
-
-- Item types: 12 base items × 4 slots × 3 rarity tiers (Common / Magic / Rare); 16 affixes (10 prefixes, 6 suffixes) across `atk_flat` + `hp_flat` modifiers
-- Authored data: `data/items.json` + `data/affixes.json` (room to grow to 200×200 by v0.6.0)
-- Deterministic loot roller (`seedrandom` PRNG) — same seed → same item, every time
-- Drop on death with weighted rarity + ilvl caps
-- Ground items glow in rarity color, pulse animation, name label above
-- DOM tooltip on hover with name (rarity color), base damage/armor, every rolled affix, compare-with-equipped
-- Click-to-walk-then-click-to-pickup (D2-style); auto-equip into the weapon/head/chest/ring slot
-- Equipped weapon's `baseDamage` + `atk_flat` affixes feed `Actor.derivedStats.atk` → flow directly into combat damage
-- 4 new e2e tests covering forceDrop determinism, tooltip rendering, walk+pickup-equip, weapon swap
-
-## What's in v0.2.0
-
-- 12×12 isometric grid, procedural sprites (real Kenney + LPC art lands in v0.3.0 — pack URLs were 404 at last attempt; manual download script is the next pass)
-- Click-to-move and click-to-attack
-- 1 enemy with chase-and-melee AI (aggro range 5, attack on adjacency)
-- Player melee skill: 25 dmg, 1-tile range, 400 ms cooldown
-- DOM HP bar + floating Pixi-rendered damage popups (kill popup styled distinct from hit)
-- Full death + respawn loop for both player (2 s, back to (6,6) full HP) and enemy (3 s, random edge tile, full HP)
-- Pure-TS combat math in `src/systems/combat.ts` and `src/systems/ai.ts` — Vitest covers every transition
-
-## What's in v0.1.0
-
-- 12×12 isometric grid, click-to-move pathing
-- Pixi v8 + WebGL rendering, Tauri 2.x shell scaffolded
-- Capability allow-list locked: FS scoped to `$APPDATA/wyrdloom/saves`, window controls, dialog — no `http:`, `shell:`, `process:`
-- Vitest unit tests for iso math, Playwright e2e for boot + click-to-move
-- License-compliance CI gate
+First launch opens the character-creation modal — pick Furyborn or Frostmark (Sealwarden unlocks once any character has dismissed the Pact-Bearer ending), name the character, optionally enable Hardcore, click **Begin**.
 
 ## Stack
 
 | | |
 |---|---|
 | Renderer | [PixiJS v8](https://pixijs.com) (MIT) |
-| Language | TypeScript 5.x strict |
+| Language | TypeScript 5.x strict + `noUncheckedIndexedAccess` |
 | Bundler | [Vite 6](https://vite.dev) |
 | Native shell | [Tauri 2.x](https://tauri.app) (MIT/Apache-2.0) |
 | HUD framework | [Lit 3.x](https://lit.dev) (BSD-3-Clause) — Web Components for menu panels |
-| Audio | [howler.js](https://howlerjs.com) (MIT) — wired for v0.6.0 |
+| Audio | [howler.js](https://howlerjs.com) (MIT) |
 | Storage | [idb](https://github.com/jakearchibald/idb) (ISC) for web, `@tauri-apps/api/fs` for native |
 | Procgen RNG | [seedrandom](https://github.com/davidbau/seedrandom) (MIT) |
-| Tests | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) |
+| Tests | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) (Chromium + WebKit) |
 | Pkg mgr | [bun](https://bun.sh) (preferred) — `pnpm` fallback |
 
-## Controls (v0.7.0)
+## Controls
 
-| Action | Binding |
+| Action | Default binding |
 |---|---|
-| Move | Left-click a floor tile — A* routes around walls |
-| Attack enemy (Cleave) | Left-click an enemy — Furyborn basic strike, +12 rage per landed hit |
-| Walk to loot | Left-click a ground item — player A*-walks there |
-| Pick up loot | Left-click a ground item *while standing on it* — goes into the bag (no auto-equip) |
-| Inspect ground loot | Hover a ground item — tooltip shows name, base stat, affixes, and current-equipped compare |
-| Talk to NPC | Left-click a Whitestone NPC — player A*-walks to an adjacent floor tile, then opens dialog |
-| Change zone | Walk onto a doorway tile (Whitestone south → Catacombs, Whitestone east → Frostvein) |
-| Inventory | `I` toggles the 10×4 bag panel; left-click a cell to equip; right-click to drop on the floor |
-| Character | `C` toggles the paper-doll panel; click an equipped slot to unequip back to the bag |
-| Quests | `Q` toggles the expanded quest panel (compact tracker is always on the right edge) |
-| Save | `S` saves to slot 1 — only allowed in the Whitestone hub (anti-save-scum, spec §8) |
-| Hotbar | Keys 1-4 trigger bound skills. Furyborn skills available in bind panel: Whirlwind (25 rage), Charge (30 rage); Battle Roar / Frenzy / Execute defined but stubbed |
-| Close panel | `Esc` closes every open panel + the NPC dialog |
-| Quit | Close the window — there's no title screen yet |
+| Move | Left-click a floor tile (A* pathfinds around walls) |
+| Attack enemy | Left-click an enemy — class-baselined basic strike (Cleave / Volley / Smite) |
+| Pick up loot | Left-click a ground item — walks there, then picks up |
+| Inspect loot | Hover a ground item — tooltip with affixes + compare-with-equipped |
+| Talk to NPC | Left-click a Whitestone NPC (Quest-board, Smith, Imbuer, Wyrdkeeper) |
+| Change zone | Step onto a doorway tile (each zone has its own exits) |
+| Inventory | `I` |
+| Character sheet | `C` |
+| Bind skill | `B` |
+| Imbuer panel | `M` |
+| Echo portal | `E` (at the Wyrdkeeper) |
+| Quest tracker (expanded) | `Q` |
+| Settings | `O` |
+| Manual save | `S` (hubs only — anti-save-scum per spec §8) |
+| Skill hotbar | `1` `2` `3` `4` |
+| Close panel | `Esc` |
 
-Vendor UI, gold, talent grid, Bonecaller / Frostmark classes land in v0.8.0–v0.9.0 per spec §10.
+Every binding above is remappable in **Settings → Keybinds**. `Q` and `Esc` are hardcoded as meta-keys. Settings persist across save deletes via localStorage.
 
 ## Build from source
 
@@ -135,8 +70,14 @@ Vendor UI, gold, talent grid, Bonecaller / Frostmark classes land in v0.8.0–v0
 
 ```bash
 bun install
-bun run dev          # http://127.0.0.1:1420
-bun run build        # dist/ (static; serve from anywhere)
+bun run build        # dist/ — static, serve from anywhere
+bun run preview      # quick local server for dist/
+```
+
+For the GitHub Pages build (subpath `/wyrdloom/`):
+
+```bash
+VITE_DEPLOY_BASE=/wyrdloom/ bun run build
 ```
 
 ### Native target (Tauri)
@@ -152,34 +93,53 @@ The Tauri bundle target is whichever OS you're building on:
 - Windows → `.msi`
 - macOS → `.dmg`
 
+Tagged releases trigger `.github/workflows/release.yml` which builds all three OS targets in parallel and attaches the installers + `dist.tar.gz` to the GitHub release.
+
 ## Run the tests
 
 ```bash
-bun run typecheck     # tsc --noEmit
-bun run lint          # ESLint, max-warnings 0
-bun run test          # Vitest unit tests
-bun run test:e2e      # Playwright Chromium + WebKit
+bun run typecheck      # tsc --noEmit (strict + noUncheckedIndexedAccess)
+bun run lint           # ESLint, max-warnings 0
+bun run test           # Vitest unit tests
+bun run test:e2e       # Playwright Chromium + WebKit
 bun run check:licenses # asset attribution + Tauri capability gate
 ```
 
-CI (GitHub Actions) runs all of the above on `ubuntu-22.04 / windows-latest / macos-latest`.
+### Bot-play (DoD: 1 hour clean fuzzer run)
+
+```bash
+bun run dev &                                       # in one terminal
+BOT_DURATION_MS=3600000 bun run bot:play            # 1-hour fuzzer
+```
+
+`tools/bot_play.ts` drives random clicks + keypresses + skill triggers against the canvas, auto-respawns on death, and exits non-zero if any `console.error` / `console.warn` / `pageerror` fires. The 1-hour run validates the v1.0.0 DoD line "no console.error / console.warn in 5-min play" with a 12× safety margin.
+
+CI runs lint + typecheck + unit + e2e on `ubuntu-22.04 / windows-latest / macos-latest` per push to `main`.
 
 ## Repo layout
 
 ```
-src/                  # game source (TS strict)
-  engine/             # Pixi wrappers, iso math, input
-  systems/            # save adapter, loot, stats — landing later
-  ui/                 # DOM HUD overlay
-  platform/           # Tauri vs web split (save adapter)
-src-tauri/            # Rust shell + capability allow-list
-  capabilities/       # FS+window+dialog only (BUILD_PROMPT §2.5)
-assets/               # bundled at build time; never CDN-loaded
-data/                 # JSON: items, affixes, uniques, gems
+src/                    # game source (TS strict)
+  systems/              # combat, loot, save adapter, settings, quests
+  ui/                   # DOM HUD (Lit Web Components, never in-canvas)
+  platform/             # Tauri vs web split — save adapter, file IO
+  levels/               # zone authoring (Whitestone, Catacombs, Frostvein, …)
+  fx/                   # tile + sprite drawing, color filters
+src-tauri/              # Rust shell + capability allow-list
+  capabilities/         # FS + window + dialog only (BUILD_PROMPT §2.5)
+assets/                 # bundled at build time; never CDN-loaded
+data/                   # JSON: items, affixes, uniques, gems, mythics, quests
 tests/{unit,e2e}/
-tools/                # license gate, version sync (TS, run via bun)
-docs/{adr,…}/         # architecture decision records
+tools/                  # license gate, version sync, bot-play
+docs/{adr,…}/           # architecture decision records
 ```
+
+## Saves
+
+- **5 character slots**, schema-versioned (currently v6).
+- Manual save is `S`, hubs only. Auto-save fires on zone change, level-up, quest complete, and every 5 minutes.
+- Schema bumps add a migrator in `src/platform/SaveAdapter.ts`'s `MIGRATIONS` table; loaders fail-fast on unknown versions.
+- **Hardcore characters** are deleted (slot wiped) on death — chosen at character creation, frozen for the life of the save.
 
 ## License
 
@@ -190,3 +150,7 @@ Third-party assets and libraries: tracked row-by-row in `LICENSES.md`. We accept
 ## Spec
 
 The full design + scope spec is in `BUILD_PROMPT.md`. That file is the canonical source of truth — any divergence between this README and the spec defers to the spec.
+
+## Changelog
+
+Per-version notes live in `RELEASE_NOTES_v0.X.md` files at the repo root, from `v0.1.0` through `v1.0.0`. The launch retrospective is `RELEASE_NOTES_v1.0.md`.

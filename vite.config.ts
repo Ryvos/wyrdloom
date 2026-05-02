@@ -4,7 +4,15 @@ import { resolve } from 'node:path';
 // Tauri uses a fixed dev port; align Vite to it so `tauri dev` can hand off cleanly.
 const TAURI_DEV_PORT = 1420;
 
+// GitHub Pages serves the repo at /wyrdloom/. The Pages workflow sets
+// VITE_DEPLOY_BASE; everything else (Tauri, vite preview, the local Vite dev
+// server) leaves it unset and ships at /. Avoid hardcoding /wyrdloom/ here so
+// a fork doesn't have to also rewrite this file.
+const DEPLOY_BASE = process.env.VITE_DEPLOY_BASE ?? '/';
+
 export default defineConfig({
+  base: DEPLOY_BASE,
+
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),

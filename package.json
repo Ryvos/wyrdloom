@@ -1,6 +1,6 @@
 {
   "name": "wyrdloom",
-  "version": "0.11.0",
+  "version": "1.0.0",
   "description": "Single-player isometric action-RPG. Web + native (Tauri). MIT-licensed source, CC0/CC-BY/OFL assets only.",
   "type": "module",
   "private": true,
@@ -19,7 +19,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "check:licenses": "bun tools/check_licenses.ts",
-    "sync:version": "bun tools/sync_version.ts"
+    "sync:version": "bun tools/sync_version.ts",
+    "bot:play": "bun tools/bot_play.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",

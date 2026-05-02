@@ -1,4 +1,11 @@
-// WYRDLOOM v0.11.0 — Week 11: Settings + accessibility + Hardcore + character creation.
+// WYRDLOOM v1.0.0 — Launch. Twelve-week schedule honored end to end.
+// v1.0.0 ships the v0.11.0 bytes plus the launch infrastructure (bot-play
+// harness, GitHub Pages deploy workflow, Tauri release artifact workflow,
+// README + RELEASE_NOTES_v1.0). No new gameplay features over v0.11.0; the
+// version bump marks "we believe everything in here is shippable." Per-week
+// retrospective in RELEASE_NOTES_v1.0.md.
+//
+// v0.11.0 (Week 11) — Settings + accessibility + Hardcore + character creation.
 // New in v0.11.0: a global Settings store backed by localStorage (color-blind
 // presets, reduce-motion, font scale, per-action keybinds, audio volumes —
 // survives save deletes), the <wyrd-settings> Lit panel rendered in #hud
@@ -139,7 +146,7 @@ import {
   type SettingsState,
 } from './systems/settings';
 
-const APP_VERSION = '0.11.0';
+const APP_VERSION = '1.0.0';
 const DEFAULT_CATACOMBS_SEED = 'catacombs-1';
 const DEFAULT_FROSTVEIN_SEED = 'frostvein-1';
 const DEFAULT_CINDERFALL_SEED = 'cinderfall-1';

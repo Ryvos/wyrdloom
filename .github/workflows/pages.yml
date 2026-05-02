@@ -1,0 +1,64 @@
+# GitHub Pages deploy — builds the web demo on every push to main and on
+# version-tag pushes, then publishes dist/ to the github-pages environment.
+#
+# v1.0.0 DoD: "Web demo deployed to GitHub Pages; opens in Chrome/Firefox/Safari
+# without console errors." This workflow ships the static bundle; bot-play
+# (tools/bot_play.ts, see CI) verifies the no-console-errors line.
+#
+# The `base` path is /wyrdloom/ to match the GitHub Pages project URL
+# https://ryvos.github.io/wyrdloom/. Vite reads VITE_DEPLOY_BASE; vite.config.ts
+# falls back to "/" when the env var is missing so local dev / Tauri builds
+# continue to ship at root.
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+# A single concurrent deploy is enough; cancel a stale run if a new commit
+# lands while one is in flight.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install JS deps
+        run: bun install --frozen-lockfile
+
+      - name: Build static bundle
+        env:
+          VITE_DEPLOY_BASE: /wyrdloom/
+        run: bun run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-22.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

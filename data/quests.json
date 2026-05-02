@@ -49,6 +49,16 @@
       "act": 2,
       "main": true,
       "order": 4
+    },
+    {
+      "id": "q-act3-pact",
+      "title": "The Pact-Bearer",
+      "summary": "The west gate of Whitestone burns where the ruins of the old keep still hold their covenant. Pass through Cinderfall and end the Pact-Bearer where their oath was sworn.",
+      "objective": { "kind": "boss_kill", "bossId": "pact-bearer", "count": 1 },
+      "reward": "The covenant breaks. The world remembers.",
+      "act": 3,
+      "main": true,
+      "order": 5
     }
   ]
 }

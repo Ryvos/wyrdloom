@@ -10,7 +10,17 @@ import type { ClassId } from '../types/class';
 
 // Activation kind picks the executor in main.ts. `passive` means the skill
 // is referenced (e.g., for talent grids) but doesn't fire from the hotbar.
-export type SkillKind = 'basic' | 'aoe' | 'mobility' | 'buff' | 'finisher' | 'passive';
+// v0.9.0 adds 'projectile' for Frostmark's ranged-feel basic attack — for
+// now mechanically identical to a tile-adjacent strike, with ranged combat
+// proper deferred to v0.10.0+ once a Pixi missile system lands.
+export type SkillKind =
+  | 'basic'
+  | 'aoe'
+  | 'mobility'
+  | 'buff'
+  | 'finisher'
+  | 'passive'
+  | 'projectile';
 
 export interface SkillDef {
   readonly id: string;
@@ -99,6 +109,83 @@ export const SKILLS: ReadonlyArray<SkillDef> = [
     cooldownMs: 5000,
     damageMul: 3.0,
     summary: '[v0.7.x] Massive damage to enemies under 30% HP. Effect lands in v0.7.x.',
+    implemented: false,
+  },
+
+  // Frostmark kit — v0.9.0. 3 working (Volley basic / Ice Nova aoe / Blink
+  // mobility), 3 stubbed (Aspect / Shatter / Piercing). Mana regenerates
+  // passively rather than building from hits — a different rotation feel
+  // from Furyborn.
+  {
+    id: 'fm-volley',
+    name: 'Volley',
+    icon: '➹',
+    classId: 'frostmark',
+    kind: 'basic',
+    cost: 0,
+    cooldownMs: 0,
+    damageMul: 1.0,
+    summary: 'Frost-tipped strike. Faster than Cleave; mana regenerates idle. Left-click.',
+    implemented: true,
+  },
+  {
+    id: 'fm-icenova',
+    name: 'Ice Nova',
+    icon: '❄',
+    classId: 'frostmark',
+    kind: 'aoe',
+    cost: 30,
+    cooldownMs: 1800,
+    damageMul: 0.6,
+    summary: 'Burst of ice — strikes every adjacent enemy. Costs 30 Mana.',
+    implemented: true,
+  },
+  {
+    id: 'fm-blink',
+    name: 'Blink',
+    icon: '✦',
+    classId: 'frostmark',
+    kind: 'mobility',
+    cost: 25,
+    cooldownMs: 4500,
+    damageMul: 0,
+    summary: 'Step through frost — dash up to 5 tiles toward your goal. Costs 25 Mana.',
+    implemented: true,
+  },
+  {
+    id: 'fm-aspect',
+    name: 'Frost Aspect',
+    icon: '◆',
+    classId: 'frostmark',
+    kind: 'buff',
+    cost: 40,
+    cooldownMs: 9000,
+    damageMul: 0,
+    summary: '[v0.9.x] +30% move speed for 4 s. Defined; effect lands in v0.9.x.',
+    implemented: false,
+  },
+  {
+    id: 'fm-shatter',
+    name: 'Shatter',
+    icon: '✺',
+    classId: 'frostmark',
+    kind: 'finisher',
+    cost: 45,
+    cooldownMs: 5000,
+    damageMul: 2.5,
+    summary: '[v0.9.x] Massive damage to chilled enemies. Effect lands in v0.9.x.',
+    implemented: false,
+  },
+  {
+    id: 'fm-piercing',
+    name: 'Piercing Shot',
+    icon: '➶',
+    classId: 'frostmark',
+    kind: 'projectile',
+    cost: 35,
+    cooldownMs: 3500,
+    damageMul: 1.4,
+    summary: '[v0.9.x] Pierces through enemies in a line. Effect lands in v0.9.x.',
     implemented: false,
   },
 ];

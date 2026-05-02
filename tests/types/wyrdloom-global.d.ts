@@ -52,7 +52,7 @@ interface Window {
       entrance: { tx: number; ty: number };
       boss: { tx: number; ty: number };
     };
-    readonly zoneId: 'whitestone' | 'catacombs' | 'frostvein';
+    readonly zoneId: 'whitestone' | 'catacombs' | 'frostvein' | 'cinderfall';
     readonly npcs: ReadonlyArray<{
       id: string;
       kind: 'questboard' | 'smith' | 'imbuer' | 'stash';
@@ -66,6 +66,7 @@ interface Window {
     }>;
     readonly hollowBishopPhase: number;
     readonly wormMotherPhase: number;
+    readonly pactBearerPhase: number;
     readonly classId: string | null;
     readonly resource: number;
     readonly resourceMax: number;
@@ -82,7 +83,7 @@ interface Window {
       teleportPlayer(tx: number, ty: number): boolean;
       teleportEnemy(id: string, tx: number, ty: number): boolean;
       attackEnemy(id: string): boolean;
-      changeZone(target: 'whitestone' | 'catacombs' | 'frostvein'): void;
+      changeZone(target: 'whitestone' | 'catacombs' | 'frostvein' | 'cinderfall'): void;
       saveNow(slot?: number): Promise<void>;
       loadSlot(slot?: number): Promise<boolean>;
       deleteSlot(slot?: number): Promise<void>;
@@ -94,6 +95,7 @@ interface Window {
         version: string;
       }>>;
       openNpcByKind(kind: 'questboard' | 'smith' | 'imbuer' | 'stash'): Promise<boolean>;
+      setClass(classId: 'furyborn' | 'bonecaller' | 'frostmark' | 'sealwarden'): boolean;
     };
   };
 }

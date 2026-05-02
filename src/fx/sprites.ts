@@ -104,6 +104,50 @@ export function makeWormMotherSprite(): Container {
   return c;
 }
 
+export function makePactBearerSprite(): Container {
+  const c = new Container();
+  const body = new Graphics();
+  // Tall, broad cathedral knight — wider shoulders than the Bishop, holds a
+  // halberd silhouette suggested by a vertical bar to the right.
+  // Cape / cloak background.
+  body
+    .poly([
+      { x: -10, y: TILE_H / 2 + 8 },
+      { x: 10, y: TILE_H / 2 + 8 },
+      { x: 7, y: -TILE_H / 2 + 4 },
+      { x: -7, y: -TILE_H / 2 + 4 },
+    ])
+    .fill(0x3a1a1a)
+    .stroke({ color: 0x1a0a0a, width: 2 });
+  // Plate cuirass.
+  body
+    .rect(-6, -TILE_H / 2 + 6, 12, 16)
+    .fill(0x6a5040)
+    .stroke({ color: 0x1a1814, width: 1.5 });
+  // Pact-flame sigil on the chest — small ember dot.
+  body.circle(0, -TILE_H / 2 + 12, 2).fill(0xff8a3a);
+  // Helm — broader than the Bishop's mitre; sealed visor.
+  body
+    .rect(-5, -TILE_H / 2 - 6, 10, 9)
+    .fill(0x9a7a4a)
+    .stroke({ color: 0x1a1814, width: 1.5 });
+  // Visor slit.
+  body.rect(-4, -TILE_H / 2 - 3, 8, 1.5).fill(0xff5530);
+  // Halberd shaft (vertical) — silhouette only.
+  body.rect(11, -TILE_H / 2 - 4, 1.5, TILE_H + 8).fill(0x2a1a0e);
+  // Halberd head — angled blade.
+  body
+    .poly([
+      { x: 10, y: -TILE_H / 2 - 4 },
+      { x: 16, y: -TILE_H / 2 - 1 },
+      { x: 11.5, y: -TILE_H / 2 + 4 },
+    ])
+    .fill(0xc8b878)
+    .stroke({ color: 0x1a1814, width: 1.5 });
+  c.addChild(body);
+  return c;
+}
+
 // Square attack-flash overlay; tweens via the caller.
 export function makeHitFlash(): Graphics {
   const g = new Graphics();

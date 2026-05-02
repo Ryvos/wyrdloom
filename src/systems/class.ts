@@ -30,12 +30,41 @@ export const FURYBORN: ClassDef = {
   baseMoveCooldownMs: 150,
 };
 
-export const CLASSES: ReadonlyArray<ClassDef> = [FURYBORN];
+export const FROSTMARK: ClassDef = {
+  id: 'frostmark',
+  name: 'Frostmark',
+  stat: 'agility',
+  resource: 'mana',
+  resourceMax: 100,
+  // Mana regenerates passively — no on-hit gain. Frostmark sustains casting
+  // through downtime + skill rotations rather than the Furyborn rage build-up.
+  resourceRegen: 5,
+  resourceOnHit: 0,
+  resourceColor: '#3a6ec9',
+  skills: [
+    'fm-volley',
+    'fm-icenova',
+    'fm-blink',
+    'fm-aspect',
+    'fm-shatter',
+    'fm-piercing',
+  ],
+  // Agile glass-cannon: lower HP, lower per-hit atk, much faster swing speed
+  // and faster movement. The DPS rate ends up close to Furyborn's via cadence
+  // rather than per-hit weight.
+  baseHp: 95,
+  baseAtk: 18,
+  baseAtkCooldownMs: 320,
+  baseMoveCooldownMs: 130,
+};
+
+export const CLASSES: ReadonlyArray<ClassDef> = [FURYBORN, FROSTMARK];
 
 export function getClass(id: ClassId): ClassDef | undefined {
   return CLASSES.find((c) => c.id === id);
 }
 
-// Default class for new characters in v0.7.0 — character creation arrives
-// alongside Bonecaller/Frostmark in v0.8.0–v0.9.0.
+// Default class for new characters until character-creation lands in v0.11.0.
+// Furyborn ships v0.7.0; Frostmark joins in v0.9.0 and is selectable via the
+// dev hook (`__wyrdloom.dev.setClass('frostmark')` after a fresh save).
 export const DEFAULT_CLASS_ID: ClassId = 'furyborn';

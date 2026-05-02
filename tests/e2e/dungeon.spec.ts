@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const VERSION = '0.8.0';
+const VERSION = '0.9.0';
 
 async function enterCatacombs(page: import('@playwright/test').Page): Promise<void> {
   await page.evaluate(() => window.__wyrdloom.dev.changeZone('catacombs'));

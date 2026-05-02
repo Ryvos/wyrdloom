@@ -30,12 +30,13 @@ function fakeState(): SaveState {
     catacombsSeed: 'catacombs-1',
     killCount: 0,
     quests: makeQuestState(),
+    endingSeen: false,
   };
 }
 
 describe('SaveAdapter', () => {
-  it('schema version is 3 in v0.8.0', () => {
-    expect(SAVE_SCHEMA_VERSION).toBe(3);
+  it('schema version is 4 in v0.9.0', () => {
+    expect(SAVE_SCHEMA_VERSION).toBe(4);
   });
 
   it('5 character slots, 1-indexed', () => {
@@ -85,8 +86,8 @@ describe('SaveAdapter', () => {
     expect(() => migrate(file)).toThrow(/migrator from schema 0/);
   });
 
-  it('MIGRATIONS table contains 1→2 and 2→3 entries in v0.8.0', () => {
-    expect(Object.keys(MIGRATIONS).sort()).toEqual(['1', '2']);
+  it('MIGRATIONS table contains 1→2, 2→3, and 3→4 entries in v0.9.0', () => {
+    expect(Object.keys(MIGRATIONS).sort()).toEqual(['1', '2', '3']);
   });
 
   it('migrate() upgrades a v1 save through v2 to v3 with Furyborn defaults', () => {
@@ -122,21 +123,64 @@ describe('SaveAdapter', () => {
     expect(migrated.state.killCount).toBe(0);
   });
 
-  it('migrate() upgrades a v2 save to v3 (no shape change)', () => {
-    const v2State: SaveState = fakeState();
+  it('migrate() upgrades a v2 save through v3 to v4 (gem fields no-op + endingSeen default)', () => {
+    // A v2-shaped save (no endingSeen). We lie to the type system since the
+    // SaveState type is the latest-version shape.
+    const v2State = {
+      playerHp: 120,
+      playerStatsAtk: 28,
+      playerStatsMaxHp: 120,
+      classId: 'furyborn',
+      resource: 0,
+      inventory: makeInventory(),
+      equipment: {},
+      hotbar: [null, null, null, null],
+      zoneId: 'whitestone',
+      catacombsSeed: 'catacombs-1',
+      killCount: 0,
+      quests: makeQuestState(),
+    };
     const file: SaveFile = {
       schemaVersion: 2,
       createdAt: 0,
       updatedAt: 0,
       characterName: 'Pre-Imbuer',
       version: '0.7.0',
-      state: v2State,
+      state: v2State as unknown as SaveState,
     };
     const migrated = migrate(file);
-    expect(migrated.schemaVersion).toBe(3);
-    // State payload is preserved unchanged — sockets/gems/uniques are all
-    // optional fields, so absence is the v2 default.
-    expect(migrated.state).toEqual(v2State);
+    expect(migrated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
+    expect(migrated.state.endingSeen).toBe(false);
+    expect(migrated.state.zoneId).toBe('whitestone');
+    expect(migrated.state.classId).toBe('furyborn');
+  });
+
+  it('migrate() upgrades a v3 save to v4 by stamping endingSeen: false', () => {
+    const v3State = {
+      playerHp: 120,
+      playerStatsAtk: 28,
+      playerStatsMaxHp: 120,
+      classId: 'furyborn',
+      resource: 0,
+      inventory: makeInventory(),
+      equipment: {},
+      hotbar: [null, null, null, null],
+      zoneId: 'whitestone',
+      catacombsSeed: 'catacombs-1',
+      killCount: 0,
+      quests: makeQuestState(),
+    };
+    const file: SaveFile = {
+      schemaVersion: 3,
+      createdAt: 0,
+      updatedAt: 0,
+      characterName: 'Pre-Pact',
+      version: '0.8.0',
+      state: v3State as unknown as SaveState,
+    };
+    const migrated = migrate(file);
+    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.state.endingSeen).toBe(false);
   });
 
   it('buildSaveFile stamps schema + timestamps', () => {

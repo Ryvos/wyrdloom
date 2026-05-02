@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const VERSION = '0.8.0';
+const VERSION = '0.9.0';
 // Same offline-probed seed as the loot tests — Honed Iron Sword of Malice.
 const WEAPON_SEED = 'weapon-seed-17';
 

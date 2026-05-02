@@ -103,6 +103,27 @@ export const WORM_MOTHER_PHASE_MODS: readonly [PhaseMod, PhaseMod, PhaseMod] = [
   { atkMul: 1.7, cooldownMul: 0.55 },  // phase 3 — desperation, short cd
 ];
 
+// The Pact-Bearer — Act III final boss. Per spec §5 (3 phases). Highest
+// baseline of any boss — the player should arrive geared from Act II uniques
+// + sockets, so the wall is meaningfully larger. Curve splits the difference
+// between the Bishop's steady ramp and the Worm-Mother's late explosion:
+// phase 2 already hits hard, phase 3 hits very hard but the cooldown crush
+// is gentler so the fight rewards positioning over twitch.
+export const PACT_BEARER_STATS: ActorStats = {
+  maxHp: 320,
+  atk: 22,
+  atkRange: 1,
+  atkCooldownMs: 1000,
+  aggroRange: 9,
+  moveCooldownMs: 230,
+};
+
+export const PACT_BEARER_PHASE_MODS: readonly [PhaseMod, PhaseMod, PhaseMod] = [
+  { atkMul: 1.0, cooldownMul: 1.0 },   // phase 1 — measured, brutal-but-fair
+  { atkMul: 1.5, cooldownMul: 0.8 },   // phase 2 — pact-flame ignites
+  { atkMul: 2.0, cooldownMul: 0.65 },  // phase 3 — desperate covenant
+];
+
 export function bossPhase(hp: number, maxHp: number): 1 | 2 | 3 {
   if (maxHp <= 0) return 1;
   const frac = hp / maxHp;

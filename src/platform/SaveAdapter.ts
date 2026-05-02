@@ -28,7 +28,9 @@ import type { ClassId } from '../types/class';
 //                and the migrator is a version-stamp bump only. The bump
 //                serves as a "writer understood v0.8.0 fields" marker so a
 //                future shape-breaking change can branch on schemaVersion.
-export const SAVE_SCHEMA_VERSION = 3;
+//   4 (v0.9.0) — adds `endingSeen: boolean` (Pact-Bearer one-shot gate).
+//                Pre-v0.9.0 saves migrate to `endingSeen: false`.
+export const SAVE_SCHEMA_VERSION = 4;
 
 // Slots are 1..MAX_SLOTS (slot 0 reserved for "current/auto" if we ever
 // split auto vs manual saves; v0.6.0 ships 5 manual slots only).
@@ -63,6 +65,9 @@ export interface SaveState {
   readonly killCount: number;
   // Quest state
   readonly quests: QuestState;
+  // v0.9.0+: flips true once the player dismisses the Pact-Bearer ending
+  // overlay. Pre-v0.9.0 saves migrate to false (haven't reached Act III).
+  readonly endingSeen: boolean;
 }
 
 export type SlotIndex = 1 | 2 | 3 | 4 | 5;
@@ -108,6 +113,16 @@ export const MIGRATIONS: Record<number, (s: AnyState) => AnyState> = {
   // item was rolled before v0.8.0 and has no socket/unique data. We bump
   // the version so the loader can branch on it later.
   2: (file): AnyState => ({ ...file, schemaVersion: 3 }),
+  // v0.8.0 → v0.9.0: state.endingSeen joins the SaveState. Pre-v0.9.0 saves
+  // never reached Act III, so endingSeen=false is the correct default.
+  3: (file): AnyState => {
+    const oldState = (file.state as AnyState) ?? {};
+    return {
+      ...file,
+      schemaVersion: 4,
+      state: { ...oldState, endingSeen: false },
+    };
+  },
 };
 
 // Apply migrations until current version is reached, or throw on unknown.

@@ -1,9 +1,10 @@
-// WYRDLOOM v0.8.0 — Week 8: Class balance + 20 uniques + crafting + sockets + gems.
-// New in v0.8.0: 'unique' rarity wired into the drop pipeline (forced on
-// act-bosses), 20 unique items in data/uniques.json, 25 gems (5 kinds × 5
-// qualities), Imbuer NPC in Whitestone with two recipes (3 magic →
-// 1 rare, socket gem into empty socket), socket pips on tooltip + paper-doll,
-// SaveAdapter v3 (no shape break — version-stamp bump only).
+// WYRDLOOM v0.9.0 — Week 9: Cinderfall + Pact-Bearer + ending. Frostmark playable.
+// New in v0.9.0: Frostmark class (Agility/Mana/Ice-ranger; 6-skill kit, 3
+// implemented), Cinderfall zone (Act III biome with warm-amber color grade)
+// reachable from the west gate of Whitestone, the Pact-Bearer act-final boss
+// with 3 phases and a guaranteed unique drop, an ending overlay triggered on
+// the Pact-Bearer kill (one-shot via SaveState.endingSeen), and SaveAdapter
+// v4 with the third schema migration in the table.
 
 import { Application, Container, Graphics, ColorMatrixFilter, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
@@ -16,11 +17,14 @@ import {
   HOLLOW_BISHOP_PHASE_MODS,
   WORM_MOTHER_STATS,
   WORM_MOTHER_PHASE_MODS,
+  PACT_BEARER_STATS,
+  PACT_BEARER_PHASE_MODS,
   bossPhase,
   type ActorStats,
   type PhaseMod,
 } from './actors/Actor';
 import { DEFAULT_CLASS_ID } from './systems/class';
+import type { ClassId } from './types/class';
 import type { Actor } from './actors/Actor';
 import type { NpcDef } from './actors/Npc';
 import { canAttack, performAttack, distanceBetween, respawn } from './systems/combat';
@@ -33,6 +37,7 @@ import {
   makeEnemySprite,
   makeHollowBishopSprite,
   makeWormMotherSprite,
+  makePactBearerSprite,
   makeHitFlash,
 } from './fx/sprites';
 import { makeNpcSprite } from './fx/npc_sprite';
@@ -83,6 +88,7 @@ import {
 import { makeWhitestoneZone, WHITESTONE_NPCS } from './levels/whitestone';
 import { makeCatacombsZone } from './levels/catacombs';
 import { makeFrostveinZone } from './levels/frostvein';
+import { makeCinderfallZone } from './levels/cinderfall';
 import {
   makeQuestState,
   onEnemyKilled,
@@ -103,19 +109,23 @@ import './ui/bind_panel';
 import './ui/quest_tracker';
 import './ui/npc_dialog';
 import './ui/imbuer_panel';
+import './ui/ending_overlay';
+import { ENDING_SHOW_EVENT } from './ui/ending_overlay';
 
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.9.0';
 const DEFAULT_CATACOMBS_SEED = 'catacombs-1';
 const DEFAULT_FROSTVEIN_SEED = 'frostvein-1';
+const DEFAULT_CINDERFALL_SEED = 'cinderfall-1';
 const DEFAULT_CHARACTER_NAME = 'Wyrdling';
 const RESPAWN_PLAYER_DELAY_MS = 2000;
 const RESPAWN_ENEMY_DELAY_MS = 3000;
 const HOLLOW_BISHOP_ID = 'hollow-bishop';
 const WORM_MOTHER_ID = 'worm-mother';
-type BossId = typeof HOLLOW_BISHOP_ID | typeof WORM_MOTHER_ID;
+const PACT_BEARER_ID = 'pact-bearer';
+type BossId = typeof HOLLOW_BISHOP_ID | typeof WORM_MOTHER_ID | typeof PACT_BEARER_ID;
 
 function isBossId(id: string): id is BossId {
-  return id === HOLLOW_BISHOP_ID || id === WORM_MOTHER_ID;
+  return id === HOLLOW_BISHOP_ID || id === WORM_MOTHER_ID || id === PACT_BEARER_ID;
 }
 
 interface ActorView {
@@ -158,6 +168,7 @@ interface World {
   playerDeadAt: number;
   enemyRespawnQueue: { id: string; spawnAt: number }[];
   killCount: number; // drives loot seed
+  endingSeen: boolean; // flips true on Pact-Bearer kill (acts as one-shot gate)
   hoveringItemId: string | null;
   playerPath: PathTile[] | null;
   playerPathIx: number;
@@ -175,6 +186,7 @@ interface World {
   // can re-apply the phase mod when HP crosses a threshold.
   hollowBishopPhase: 1 | 2 | 3;
   wormMotherPhase: 1 | 2 | 3;
+  pactBearerPhase: 1 | 2 | 3;
 }
 
 async function main(): Promise<void> {
@@ -259,6 +271,7 @@ async function main(): Promise<void> {
     playerDeadAt: 0,
     enemyRespawnQueue: [],
     killCount: 0,
+    endingSeen: false,
     hoveringItemId: null,
     playerPath: null,
     playerPathIx: 0,
@@ -269,6 +282,7 @@ async function main(): Promise<void> {
     saveCreatedAt: Date.now(),
     hollowBishopPhase: 1,
     wormMotherPhase: 1,
+    pactBearerPhase: 1,
   };
 
   // Initial zone setup — spawn NPCs (Whitestone) or enemies (Catacombs).
@@ -387,6 +401,9 @@ async function main(): Promise<void> {
     get hollowBishopPhase(): number {
       return W.hollowBishopPhase;
     },
+    get pactBearerPhase(): number {
+      return W.pactBearerPhase;
+    },
     get wormMotherPhase(): number {
       return W.wormMotherPhase;
     },
@@ -460,6 +477,42 @@ async function main(): Promise<void> {
         if (!isFloor(W.dungeon, tx, ty)) return 0;
         setPlayerGoal(W, { tx, ty }, null);
         return W.playerPath ? W.playerPath.length : 0;
+      },
+      // Switch the player's class — rebuilds baseline stats (HP, atk, swing
+      // speed) from the class def in place so closure-captured actor refs
+      // (e.g. teleportPlayer's `playerActor`) stay valid. Equipment and
+      // inventory are preserved. v0.9.0 exposes Frostmark via this hook
+      // until character-creation lands in v0.11.0.
+      setClass(classId: ClassId): boolean {
+        const cls = getClass(classId);
+        if (!cls) return false;
+        playerActor.classId = classId;
+        playerActor.resource = 0;
+        // Actor.stats is `readonly` by convention (base/unchanging) — class
+        // swap is the one legitimate exception in dev mode, so cast through
+        // a writable view rather than loosening the type for everyone.
+        (playerActor as unknown as { stats: typeof playerActor.stats }).stats = {
+          maxHp: cls.baseHp,
+          atk: cls.baseAtk,
+          atkRange: 1,
+          atkCooldownMs: cls.baseAtkCooldownMs,
+          aggroRange: 0,
+          moveCooldownMs: cls.baseMoveCooldownMs,
+        };
+        // Recompute derived (folds equipped affixes + sockets onto the new
+        // baseline) and resync HUD chrome.
+        recomputeStats(W);
+        playerActor.hp = playerActor.derivedStats.maxHp;
+        W.hpBar.set(playerActor.hp, playerActor.derivedStats.maxHp);
+        W.resourceBar.set(
+          0,
+          cls.resourceMax,
+          cls.resourceColor,
+          capitalize(cls.resource),
+        );
+        W.skillCdAt.clear();
+        syncStore(W);
+        return true;
       },
       // Teleport the player to an arbitrary floor tile. Used by combat e2e
       // tests so they don't have to march through procgen dungeons.
@@ -617,7 +670,13 @@ function handleKill(W: World, view: ActorView, nowMs: number): void {
     ? `boss-${id}-${W.killCount}`
     : `${id}-${W.killCount}-${Math.floor(nowMs)}`;
   // Worm-Mother sits at monster level 16 (Act II final) vs 12 for Bishop.
-  const monsterLevel = isBoss ? (id === WORM_MOTHER_ID ? 16 : 12) : 5;
+  const monsterLevel = isBoss
+    ? id === PACT_BEARER_ID
+      ? 20
+      : id === WORM_MOTHER_ID
+      ? 16
+      : 12
+    : 5;
   const item = rollDrop({ monsterLevel, seed: dropSeed, guaranteed: isBoss });
   if (item) {
     const dropTile = { ...view.actor.tile };
@@ -638,6 +697,12 @@ function handleKill(W: World, view: ActorView, nowMs: number): void {
     const done = onBossKilled(W.quests, id);
     for (const cid of done) activateNextMainAfter(W.quests, cid);
     void autoSave(W).catch((err) => console.error('autoSave failed:', err));
+    // Pact-Bearer is the v0.9.0 act-final — fire the ending overlay the
+    // first time. Subsequent kills (e.g., a respawn flow we may add in
+    // v0.11+) won't replay it because endingSeen flips on dismissal.
+    if (id === PACT_BEARER_ID && !W.endingSeen) {
+      window.dispatchEvent(new CustomEvent(ENDING_SHOW_EVENT));
+    }
   } else {
     const done = onEnemyKilled(W.quests, W.currentZone.id);
     for (const cid of done) activateNextMainAfter(W.quests, cid);
@@ -693,6 +758,13 @@ function applyZoneFilter(world: Container, zoneId: ZoneId): void {
       f.tint(0xb8d8f0, true);
       f.brightness(1.05, true);
       break;
+    case 'cinderfall':
+      // Warm amber ember-glow with a faint red bias — Ruined Keep biome
+      // (spec §4.5) feels like cinder-light cast through broken stone.
+      f.saturate(0.05, false);
+      f.tint(0xffb070, true);
+      f.brightness(0.95, true);
+      break;
   }
   world.filters = [f];
 }
@@ -711,6 +783,7 @@ function clearZone(W: World): void {
   W.enemyRespawnQueue = [];
   W.hollowBishopPhase = 1;
   W.wormMotherPhase = 1;
+  W.pactBearerPhase = 1;
 }
 
 // Spawn the actors a zone owns at boot or after a transition.
@@ -755,6 +828,21 @@ function spawnZoneActors(W: World, _fromZone: ZoneId | null): void {
     const vyl = makeActor(WORM_MOTHER_ID, 'enemy', WORM_MOTHER_STATS, bossTile);
     W.enemies.push(mountActorView(W.world, vyl, makeWormMotherSprite()));
     W.wormMotherPhase = 1;
+    return;
+  }
+
+  if (W.currentZone.id === 'cinderfall') {
+    const map = W.currentZone.map;
+    const grunt = makeActor('grunt-cf-1', 'enemy', ENEMY_STATS, {
+      tx: map.entrance.x + map.entrance.w - 1,
+      ty: map.entrance.y + map.entrance.h - 1,
+    });
+    W.enemies.push(mountActorView(W.world, grunt, makeEnemySprite()));
+
+    const bossTile = roomCenter(map.boss);
+    const pact = makeActor(PACT_BEARER_ID, 'enemy', PACT_BEARER_STATS, bossTile);
+    W.enemies.push(mountActorView(W.world, pact, makePactBearerSprite()));
+    W.pactBearerPhase = 1;
   }
 }
 
@@ -764,6 +852,7 @@ function loadZone(W: World, target: ZoneId, from: ZoneId | null): void {
   let zone: Zone;
   if (target === 'whitestone') zone = makeWhitestoneZone();
   else if (target === 'frostvein') zone = makeFrostveinZone(DEFAULT_FROSTVEIN_SEED);
+  else if (target === 'cinderfall') zone = makeCinderfallZone(DEFAULT_CINDERFALL_SEED);
   else zone = makeCatacombsZone(DEFAULT_CATACOMBS_SEED);
 
   // Tear down old visuals and actors.
@@ -953,7 +1042,7 @@ function bindHoverHandler(W: World): void {
 const BOSS_CONFIG: Record<BossId, {
   baseStats: ActorStats;
   mods: readonly [PhaseMod, PhaseMod, PhaseMod];
-  phaseField: 'hollowBishopPhase' | 'wormMotherPhase';
+  phaseField: 'hollowBishopPhase' | 'wormMotherPhase' | 'pactBearerPhase';
 }> = {
   [HOLLOW_BISHOP_ID]: {
     baseStats: HOLLOW_BISHOP_STATS,
@@ -964,6 +1053,11 @@ const BOSS_CONFIG: Record<BossId, {
     baseStats: WORM_MOTHER_STATS,
     mods: WORM_MOTHER_PHASE_MODS,
     phaseField: 'wormMotherPhase',
+  },
+  [PACT_BEARER_ID]: {
+    baseStats: PACT_BEARER_STATS,
+    mods: PACT_BEARER_PHASE_MODS,
+    phaseField: 'pactBearerPhase',
   },
 };
 
@@ -1198,6 +1292,7 @@ function snapshotSaveState(W: World): SaveState {
     catacombsSeed: DEFAULT_CATACOMBS_SEED,
     killCount: W.killCount,
     quests: W.quests,
+    endingSeen: W.endingSeen,
   };
 }
 
@@ -1233,6 +1328,7 @@ async function loadSaveAndApply(W: World, slot: SlotIndex = 1): Promise<boolean>
   W.player.actor.hp = Math.min(W.player.actor.hp, W.player.actor.derivedStats.maxHp);
   W.killCount = s.killCount;
   W.quests = s.quests;
+  W.endingSeen = s.endingSeen;
   W.characterName = file.characterName;
   W.saveCreatedAt = file.createdAt;
   W.hpBar.set(W.player.actor.hp, W.player.actor.derivedStats.maxHp);
@@ -1260,6 +1356,10 @@ function bindIntentHandlers(W: World): void {
   window.addEventListener(INTENT_SOCKET_EVENT, (e: Event) => {
     const detail = (e as CustomEvent<SocketIntent>).detail;
     if (detail) handleSocket(W, detail);
+  });
+  window.addEventListener('wyrdloom:ending-dismiss', () => {
+    W.endingSeen = true;
+    void autoSave(W).catch((err) => console.error('autoSave (post-ending) failed:', err));
   });
   // Hotbar trigger — v0.7.0 wires the Furyborn kit. Cleave is implicit
   // (left-click), other skills fire here from key 1-4 or hotbar click.

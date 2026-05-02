@@ -1,6 +1,6 @@
 [package]
 name = "wyrdloom"
-version = "0.5.0"
+version = "0.6.0"
 description = "WYRDLOOM — single-player isometric ARPG (Tauri shell)"
 authors = ["WYRDLOOM contributors"]
 license = "MIT"

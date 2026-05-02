@@ -1,18 +1,28 @@
-// WYRDLOOM v0.5.0 — Week 5: BSP procgen + Catacombs + A* pathfinding.
-// New in v0.5.0: dungeon-generated tile map (32×32), wall-blocking, A*-driven
-// click-to-walk + enemy chase, ColorMatrixFilter color grade.
+// WYRDLOOM v0.6.0 — Week 6: Whitestone hub + quests + Hollow Bishop + saves.
+// New in v0.6.0: zone system (hub ↔ catacombs), Quest-board NPC + quest
+// tracker, Hollow Bishop boss with 3-phase combat, SaveAdapter (web +
+// Tauri).
 
 import { Application, Container, Graphics, ColorMatrixFilter, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
 import type { TileCoord } from './engine/iso';
-import { makeActor, PLAYER_STATS, ENEMY_STATS } from './actors/Actor';
+import {
+  makeActor,
+  PLAYER_STATS,
+  ENEMY_STATS,
+  HOLLOW_BISHOP_STATS,
+  HOLLOW_BISHOP_PHASE_MODS,
+  bossPhase,
+} from './actors/Actor';
 import type { Actor } from './actors/Actor';
+import type { NpcDef } from './actors/Npc';
 import { canAttack, performAttack, distanceBetween, respawn } from './systems/combat';
 import { tickEnemy } from './systems/ai';
-import { generateDungeon, isFloor, roomCenter, type DungeonMap } from './systems/procgen';
+import { isFloor, roomCenter, type DungeonMap } from './systems/procgen';
 import { findPath, type PathfindGrid, type PathTile } from './systems/pathfinding';
 import { drawDungeon } from './fx/tiles';
-import { makePlayerSprite, makeEnemySprite, makeHitFlash } from './fx/sprites';
+import { makePlayerSprite, makeEnemySprite, makeHollowBishopSprite, makeHitFlash } from './fx/sprites';
+import { makeNpcSprite } from './fx/npc_sprite';
 import { spawnDamagePopup } from './fx/damage_popup';
 import { mountHpBar } from './ui/hp_bar';
 import type { HpBar } from './ui/hp_bar';
@@ -41,25 +51,52 @@ import {
 } from './ui/store';
 import { dispatchPanelToggle, type PanelId } from './ui/panel';
 import { SKILL_TRIGGER_EVENT } from './ui/hotbar';
+import { QUEST_TOGGLE_EVENT } from './ui/quest_tracker';
 import type { Slot } from './types/items';
+import {
+  type Zone,
+  type ZoneId,
+  isDoorway,
+} from './systems/zone';
+import { makeWhitestoneZone, WHITESTONE_NPCS } from './levels/whitestone';
+import { makeCatacombsZone } from './levels/catacombs';
+import {
+  makeQuestState,
+  onEnemyKilled,
+  onEnterZone,
+  onBossKilled,
+  onRarePickup,
+  activateNextMainAfter,
+  type QuestState,
+} from './systems/quests';
+import { makeSaveAdapter } from './platform/save_factory';
+import { buildSaveFile, type SaveAdapter, type SaveState, type SlotIndex } from './platform/SaveAdapter';
 
 // Side-effect imports — register the custom elements with the browser.
 import './ui/inventory_panel';
 import './ui/character_panel';
 import './ui/hotbar';
 import './ui/bind_panel';
+import './ui/quest_tracker';
+import './ui/npc_dialog';
 
-const DUNGEON_W = 32;
-const DUNGEON_H = 32;
-const DEFAULT_DUNGEON_SEED = 'catacombs-1';
+const APP_VERSION = '0.6.0';
+const DEFAULT_CATACOMBS_SEED = 'catacombs-1';
+const DEFAULT_CHARACTER_NAME = 'Wyrdling';
 const RESPAWN_PLAYER_DELAY_MS = 2000;
 const RESPAWN_ENEMY_DELAY_MS = 3000;
+const HOLLOW_BISHOP_ID = 'hollow-bishop';
 
 interface ActorView {
   readonly actor: Actor;
   readonly node: Container;
   readonly flash: Graphics;
   flashUntil: number;
+}
+
+interface NpcView {
+  readonly def: NpcDef;
+  readonly node: Container;
 }
 
 interface World {
@@ -70,19 +107,35 @@ interface World {
   readonly hpBar: HpBar;
   readonly tooltip: Tooltip;
   readonly player: ActorView;
-  readonly enemies: ActorView[];
   readonly inventory: Inventory;
-  readonly dungeon: DungeonMap;
-  readonly grid: PathfindGrid;
+  readonly saveAdapter: SaveAdapter;
+  enemies: ActorView[];
+  npcs: NpcView[];
+  tileSprites: Container[];
+  // Mutable so loadZone can swap them out.
+  currentZone: Zone;
+  dungeon: DungeonMap;
+  grid: PathfindGrid;
   groundItems: GroundItemView[];
   playerDeadAt: number;
   enemyRespawnQueue: { id: string; spawnAt: number }[];
   killCount: number; // drives loot seed
   hoveringItemId: string | null;
-  // Cached path for the player. Recomputed when goal/attackTarget changes.
-  // path[0] is the player's current tile; path[1+] are upcoming steps.
   playerPath: PathTile[] | null;
   playerPathIx: number;
+  // When the player is walking with a doorway as their goal, this remembers
+  // which zone to transition to on arrival.
+  pendingZoneTarget: ZoneId | null;
+  // When the player is walking with an NPC as the destination, this remembers
+  // which NPC to open dialog for on adjacency.
+  pendingNpcInteract: string | null;
+  // Quests + state.
+  quests: QuestState;
+  characterName: string;
+  saveCreatedAt: number;
+  // Hollow Bishop tracking — its current phase + last applied phase, so we
+  // can re-apply the phase mod when HP crosses a threshold.
+  hollowBishopPhase: 1 | 2 | 3;
 }
 
 async function main(): Promise<void> {
@@ -107,35 +160,31 @@ async function main(): Promise<void> {
   const world = new Container();
   world.label = 'world';
   world.sortableChildren = true;
-  // Catacombs color grade — cool, dim, pulled toward blue/grey. The matrix is
-  // applied to the entire world container so actors + tiles + UI overlays
-  // (hp bar, tooltip) are unaffected since they live in #hud.
-  world.filters = [makeCatacombsGrade()];
+  // Catacombs color grade — cool, dim, blue-grey. Replaced (or cleared) on
+  // zone change for the warmer hub palette.
   camera.addChild(world);
 
-  // Generate the dungeon (validator + reroll baked in) and render it.
-  const dungeon = generateDungeon({ w: DUNGEON_W, h: DUNGEON_H, seed: DEFAULT_DUNGEON_SEED });
+  // Build the initial zone — Whitestone hub. Player starts at zone.playerEntry
+  // since this is a fresh game.
+  const initialZone = makeWhitestoneZone();
+  const dungeon = initialZone.map;
   drawDungeon(world, dungeon);
+  applyZoneFilter(world, initialZone.id);
 
   const target = new Graphics();
   target.visible = false;
   world.addChild(target);
 
-  // Pathfinding grid backed by the dungeon's wall/floor tiles.
+  // Pathfinding grid is rebuilt on every zone change because `dungeon` itself
+  // is swapped — but the closure captures the field, so the closure can stay.
   const grid: PathfindGrid = {
-    w: dungeon.w,
-    h: dungeon.h,
-    isWalkable: (tx, ty): boolean => isFloor(dungeon, tx, ty),
+    get w(): number { return W.dungeon.w; },
+    get h(): number { return W.dungeon.h; },
+    isWalkable: (tx, ty): boolean => isFloor(W.dungeon, tx, ty),
   };
 
-  // Spawn actors. Player starts in the entrance room; enemy in the boss room.
-  const playerSpawn = roomCenter(dungeon.entrance);
-  const playerActor = makeActor('player', 'player', PLAYER_STATS, playerSpawn);
+  const playerActor = makeActor('player', 'player', PLAYER_STATS, initialZone.playerEntry);
   const playerView = mountActorView(world, playerActor, makePlayerSprite());
-
-  const enemySpawn = roomCenter(dungeon.boss);
-  const enemyActor = makeActor('enemy-0', 'enemy', ENEMY_STATS, enemySpawn);
-  const enemyView = mountActorView(world, enemyActor, makeEnemySprite());
 
   const hpBar = mountHpBar(hud);
   hpBar.set(playerActor.hp, playerActor.derivedStats.maxHp);
@@ -152,8 +201,12 @@ async function main(): Promise<void> {
     hpBar,
     tooltip,
     player: playerView,
-    enemies: [enemyView],
+    enemies: [],
+    npcs: [],
+    tileSprites: [],
     inventory: makeInventory(),
+    saveAdapter: makeSaveAdapter(),
+    currentZone: initialZone,
     dungeon,
     grid,
     groundItems: [],
@@ -163,14 +216,23 @@ async function main(): Promise<void> {
     hoveringItemId: null,
     playerPath: null,
     playerPathIx: 0,
+    pendingZoneTarget: null,
+    pendingNpcInteract: null,
+    quests: makeQuestState(),
+    characterName: DEFAULT_CHARACTER_NAME,
+    saveCreatedAt: Date.now(),
+    hollowBishopPhase: 1,
   };
+
+  // Initial zone setup — spawn NPCs (Whitestone) or enemies (Catacombs).
+  spawnZoneActors(W, null);
 
   // Mount Lit panels into #hud. They're hidden until toggled.
   mountPanels(hud);
   // Wire reactive store + intent handlers (equip / unequip / drop / hotbar).
   syncStore(W);
   bindIntentHandlers(W);
-  bindKeyboard();
+  bindKeyboard(W);
 
   bindClickHandler(W);
   bindHoverHandler(W);
@@ -257,7 +319,28 @@ async function main(): Promise<void> {
     isFloor(tx: number, ty: number): boolean {
       return isFloor(W.dungeon, tx, ty);
     },
-    version: '0.5.0',
+    get zoneId() {
+      return W.currentZone.id;
+    },
+    get npcs() {
+      return W.npcs.map((n) => ({
+        id: n.def.id,
+        kind: n.def.kind,
+        name: n.def.name,
+        tile: { ...n.def.tile },
+      }));
+    },
+    get quests() {
+      return Object.values(W.quests.progress).map((p) => ({
+        id: p.id,
+        status: p.status,
+        current: p.current,
+      }));
+    },
+    get hollowBishopPhase(): number {
+      return W.hollowBishopPhase;
+    },
+    version: APP_VERSION,
     dev: {
       setPlayerHp(n: number): void {
         playerActor.hp = Math.max(0, Math.min(playerActor.derivedStats.maxHp, n));
@@ -346,6 +429,36 @@ async function main(): Promise<void> {
         setPlayerGoal(W, { ...view.actor.tile }, view.actor.id);
         return true;
       },
+      // Zone transition without walking — just teleport between zones.
+      changeZone(target: ZoneId): void {
+        loadZone(W, target, W.currentZone.id);
+      },
+      // Save / load harness. Slot 1 by default.
+      async saveNow(slot: SlotIndex = 1): Promise<void> {
+        await autoSave(W, slot);
+      },
+      async loadSlot(slot: SlotIndex = 1): Promise<boolean> {
+        return await loadSaveAndApply(W, slot);
+      },
+      async deleteSlot(slot: SlotIndex = 1): Promise<void> {
+        await W.saveAdapter.remove(slot);
+      },
+      async listSlots(): Promise<unknown[]> {
+        const list = await W.saveAdapter.list();
+        return list.map((s) => ({
+          slot: s.slot,
+          characterName: s.characterName,
+          zoneId: s.zoneId,
+          updatedAt: s.updatedAt,
+          version: s.version,
+        }));
+      },
+      async openNpcByKind(kind: 'questboard' | 'smith' | 'imbuer' | 'stash'): Promise<boolean> {
+        const npc = W.npcs.find((n) => n.def.kind === kind);
+        if (!npc) return false;
+        openNpcDialog(W, npc.def);
+        return true;
+      },
     },
   };
 }
@@ -361,6 +474,129 @@ function mountActorView(world: Container, actor: Actor, sprite: Container): Acto
   return { actor, node, flash, flashUntil: 0 };
 }
 
+function mountNpcView(world: Container, def: NpcDef): NpcView {
+  const node = new Container();
+  node.label = `npc:${def.id}`;
+  const sprite = makeNpcSprite(def.kind);
+  node.addChild(sprite);
+  const { sx, sy } = tileToScreen(def.tile.tx, def.tile.ty);
+  node.position.set(sx, sy);
+  node.zIndex = depthFor(def.tile.tx, def.tile.ty) + 0.4;
+  world.addChild(node);
+  return { def, node };
+}
+
+// Hub palette = warmer; catacombs = cool blue-grey. Per spec §13:
+// "Per-act color-grade LUT (warm I → cold II → blood III) via ColorMatrixFilter."
+function applyZoneFilter(world: Container, zoneId: ZoneId): void {
+  const f = new ColorMatrixFilter();
+  switch (zoneId) {
+    case 'whitestone':
+      // Warm sunlit hub.
+      f.brightness(1.05, false);
+      f.tint(0xffe9b8, true);
+      break;
+    case 'catacombs':
+      f.saturate(-0.25, false);
+      f.tint(0x9aa6c0, true);
+      f.brightness(0.85, true);
+      break;
+  }
+  world.filters = [f];
+}
+
+// Tear down every tile sprite + actor + NPC in the world container, leaving
+// the player + target reticle untouched. Called before loadZone re-renders.
+function clearZone(W: World): void {
+  for (const sprite of W.tileSprites) sprite.destroy({ children: true });
+  W.tileSprites = [];
+  for (const v of W.enemies) v.node.destroy({ children: true });
+  W.enemies = [];
+  for (const v of W.npcs) v.node.destroy({ children: true });
+  W.npcs = [];
+  for (const g of W.groundItems) g.destroy();
+  W.groundItems = [];
+  W.enemyRespawnQueue = [];
+  W.hollowBishopPhase = 1;
+}
+
+// Spawn the actors a zone owns at boot or after a transition.
+// - Whitestone: NPCs only (Quest-board for v0.6.0).
+// - Catacombs: 1 grunt + Hollow Bishop in the boss room.
+function spawnZoneActors(W: World, _fromZone: ZoneId | null): void {
+  W.npcs = [];
+  W.enemies = [];
+
+  if (W.currentZone.id === 'whitestone') {
+    for (const def of WHITESTONE_NPCS) {
+      W.npcs.push(mountNpcView(W.world, def));
+    }
+    return;
+  }
+
+  if (W.currentZone.id === 'catacombs') {
+    // Wandering grunt — placed near the entrance so the player meets one
+    // before reaching the boss room.
+    const map = W.currentZone.map;
+    const grunt = makeActor('grunt-1', 'enemy', ENEMY_STATS, {
+      tx: map.entrance.x + map.entrance.w - 1,
+      ty: map.entrance.y + map.entrance.h - 1,
+    });
+    W.enemies.push(mountActorView(W.world, grunt, makeEnemySprite()));
+
+    // Hollow Bishop — bosses spawn at the boss-room centre with a fresh
+    // phase-1 atk profile.
+    const bossTile = roomCenter(map.boss);
+    const bishop = makeActor(HOLLOW_BISHOP_ID, 'enemy', HOLLOW_BISHOP_STATS, bossTile);
+    W.enemies.push(mountActorView(W.world, bishop, makeHollowBishopSprite()));
+    W.hollowBishopPhase = 1;
+  }
+}
+
+// Switch to a different zone. Called when the player walks onto a doorway.
+function loadZone(W: World, target: ZoneId, from: ZoneId | null): void {
+  // Build the new zone first so any failure leaves the old one intact.
+  let zone: Zone;
+  if (target === 'whitestone') zone = makeWhitestoneZone();
+  else zone = makeCatacombsZone(DEFAULT_CATACOMBS_SEED);
+
+  // Tear down old visuals and actors.
+  clearZone(W);
+
+  // Render new tiles. drawDungeon attaches them to W.world; track them so
+  // clearZone can destroy them next time.
+  W.tileSprites = drawDungeon(W.world, zone.map);
+  applyZoneFilter(W.world, zone.id);
+
+  // Update mutable world fields.
+  W.currentZone = zone;
+  W.dungeon = zone.map;
+
+  // Place player. If we know where they came from, prefer the matching
+  // entry tile; otherwise drop them at the zone's playerEntry.
+  const entry = (from && zone.entryFromZone?.[from]) ?? zone.playerEntry;
+  W.player.actor.tile = { ...entry };
+  W.player.actor.goal = null;
+  W.player.actor.attackTarget = null;
+  W.playerPath = null;
+  W.playerPathIx = 0;
+  W.pendingZoneTarget = null;
+  W.pendingNpcInteract = null;
+  placeActorNode(W.player.node, W.player.actor);
+  centerCamera(W.app, W.camera, W.player.actor.tile);
+  W.target.visible = false;
+
+  spawnZoneActors(W, from);
+
+  gameState.zoneId = zone.id;
+
+  // Quest event hook + auto-save trigger.
+  const completed = onEnterZone(W.quests, zone.id);
+  for (const id of completed) activateNextMainAfter(W.quests, id);
+  syncStore(W);
+  void autoSave(W).catch((err) => console.error('autoSave failed:', err));
+}
+
 function bindClickHandler(W: World): void {
   W.world.eventMode = 'static';
   W.world.hitArea = { contains: () => true };
@@ -372,7 +608,34 @@ function bindClickHandler(W: World): void {
 
     if (tile.tx < 0 || tile.ty < 0 || tile.tx >= W.dungeon.w || tile.ty >= W.dungeon.h) return;
 
-    // 1) Ground item on this tile? Pick it up if the player is here too,
+    // 1) Doorway tile? Walk to it; transition fires on arrival.
+    const doorway = isDoorway(W.currentZone, tile.tx, tile.ty);
+    if (doorway) {
+      W.pendingNpcInteract = null;
+      W.pendingZoneTarget = doorway.target;
+      setPlayerGoal(W, tile, null);
+      showTarget(W, tile, false);
+      return;
+    }
+
+    // 2) NPC tile? Walk-to-adjacent and open dialog on arrival.
+    const npc = W.npcs.find((n) => n.def.tile.tx === tile.tx && n.def.tile.ty === tile.ty);
+    if (npc) {
+      W.pendingZoneTarget = null;
+      W.pendingNpcInteract = npc.def.id;
+      // Walk to one tile *away* from the NPC so we don't try to stand on it.
+      const adj = adjacentWalkable(W, npc.def.tile);
+      if (adj) {
+        setPlayerGoal(W, adj, null);
+        showTarget(W, tile, false);
+      } else {
+        // Already adjacent; open dialog now.
+        openNpcDialog(W, npc.def);
+      }
+      return;
+    }
+
+    // 3) Ground item on this tile? Pick it up if the player is here too,
     // otherwise walk to it (loot pickup is on contact).
     const groundHere = W.groundItems.find(
       (g) => g.tile.tx === tile.tx && g.tile.ty === tile.ty,
@@ -384,29 +647,55 @@ function bindClickHandler(W: World): void {
       ) {
         pickUp(W, groundHere);
       } else {
+        W.pendingZoneTarget = null;
+        W.pendingNpcInteract = null;
         setPlayerGoal(W, tile, null);
       }
       return;
     }
 
-    // 2) Alive enemy? Engage. Enemies stand on floor cells so the path
+    // 4) Alive enemy? Engage. Enemies stand on floor cells so the path
     // computed below will reach them. The combat tick stops one tile short.
     const enemyHere = W.enemies.find(
       (v) => v.actor.alive && v.actor.tile.tx === tile.tx && v.actor.tile.ty === tile.ty,
     );
     if (enemyHere) {
+      W.pendingZoneTarget = null;
+      W.pendingNpcInteract = null;
       setPlayerGoal(W, { ...enemyHere.actor.tile }, enemyHere.actor.id);
       showTarget(W, tile, true);
       return;
     }
 
-    // 3) Walls reject the click — nothing happens, mirror v0.4.0 OOB behavior.
+    // 5) Walls reject the click — nothing happens, mirror v0.4.0 OOB behavior.
     if (!isFloor(W.dungeon, tile.tx, tile.ty)) return;
 
-    // 4) Empty floor — walk.
+    // 6) Empty floor — walk.
+    W.pendingZoneTarget = null;
+    W.pendingNpcInteract = null;
     setPlayerGoal(W, tile, null);
     showTarget(W, tile, false);
   });
+}
+
+function adjacentWalkable(W: World, tile: TileCoord): TileCoord | null {
+  const dx = [1, -1, 0, 0];
+  const dy = [0, 0, 1, -1];
+  for (let i = 0; i < 4; i++) {
+    const tx = tile.tx + dx[i]!;
+    const ty = tile.ty + dy[i]!;
+    if (isFloor(W.dungeon, tx, ty)) return { tx, ty };
+  }
+  return null;
+}
+
+function openNpcDialog(W: World, def: NpcDef): void {
+  W.pendingNpcInteract = null;
+  window.dispatchEvent(
+    new CustomEvent('wyrdloom:npc-dialog-open', {
+      detail: { kind: def.kind, npcName: def.name },
+    }),
+  );
 }
 
 // Set the player's goal + attack target and recompute the A* path. Single
@@ -447,6 +736,29 @@ function bindHoverHandler(W: World): void {
   });
 }
 
+// Hollow Bishop phase advancement. Re-applies the phase-mod to base stats so
+// atk + cooldown shift visibly between phases.
+function maybeAdvanceBossPhase(W: World, view: ActorView): void {
+  const next = bossPhase(view.actor.hp, view.actor.stats.maxHp);
+  if (next === W.hollowBishopPhase) return;
+  W.hollowBishopPhase = next;
+  const mod = HOLLOW_BISHOP_PHASE_MODS[next - 1]!;
+  // Mutate derivedStats — the source-of-truth for combat reads. The actor's
+  // base `stats` is immutable so we layer the mod onto derivedStats only.
+  view.actor.derivedStats = {
+    atk: Math.round(view.actor.stats.atk * mod.atkMul),
+    maxHp: view.actor.stats.maxHp,
+    armor: view.actor.derivedStats.armor,
+  };
+  // Cooldown is read off `stats.atkCooldownMs`; we need to override that too.
+  // Cheapest path: replace `stats` entirely (it's marked readonly but we own
+  // the actor lifetime here and the discriminator on the cast is intentional).
+  (view.actor as { stats: typeof view.actor.stats }).stats = {
+    ...view.actor.stats,
+    atkCooldownMs: Math.round(HOLLOW_BISHOP_STATS.atkCooldownMs * mod.cooldownMul),
+  };
+}
+
 // v0.4.0: pickup goes into the bag (no auto-equip). If the bag is full,
 // the item stays on the ground and the pickup is rejected.
 function pickUp(W: World, view: GroundItemView): boolean {
@@ -454,6 +766,12 @@ function pickUp(W: World, view: GroundItemView): boolean {
     return false;
   }
   addItem(W.inventory, view.item);
+
+  // Quest event: rare-pickup objective ticks here (regardless of zone).
+  if (view.item.rarity === 'rare') {
+    const completed = onRarePickup(W.quests);
+    for (const id of completed) activateNextMainAfter(W.quests, id);
+  }
 
   W.groundItems = W.groundItems.filter((g) => g.item.uid !== view.item.uid);
   view.destroy();
@@ -530,6 +848,8 @@ function syncStore(W: World): void {
   gameState.derived = player.derivedStats;
   gameState.baseAtk = player.stats.atk;
   gameState.baseMaxHp = player.stats.maxHp;
+  gameState.quests = W.quests;
+  gameState.zoneId = W.currentZone.id;
   notifyState();
 }
 
@@ -538,10 +858,65 @@ function mountPanels(hud: HTMLElement): void {
   const character = document.createElement('wyrd-character');
   const bind = document.createElement('wyrd-bind');
   const hotbar = document.createElement('wyrd-hotbar');
+  const tracker = document.createElement('wyrd-questtracker');
+  const npcDialog = document.createElement('wyrd-npcdialog');
   hud.appendChild(inventory);
   hud.appendChild(character);
   hud.appendChild(bind);
   hud.appendChild(hotbar);
+  hud.appendChild(tracker);
+  hud.appendChild(npcDialog);
+}
+
+// Build a SaveState snapshot from the live world. Pure read.
+function snapshotSaveState(W: World): SaveState {
+  return {
+    playerHp: W.player.actor.hp,
+    playerStatsAtk: W.player.actor.stats.atk,
+    playerStatsMaxHp: W.player.actor.stats.maxHp,
+    inventory: W.inventory,
+    equipment: W.player.actor.equipment,
+    hotbar: gameState.hotbar.map((b) => (b ? { skillId: b.skillId, label: b.label } : null)),
+    zoneId: W.currentZone.id,
+    catacombsSeed: DEFAULT_CATACOMBS_SEED,
+    killCount: W.killCount,
+    quests: W.quests,
+  };
+}
+
+async function autoSave(W: World, slot: SlotIndex = 1): Promise<void> {
+  const file = buildSaveFile({
+    characterName: W.characterName,
+    appVersion: APP_VERSION,
+    state: snapshotSaveState(W),
+    createdAt: W.saveCreatedAt,
+  });
+  await W.saveAdapter.save(slot, file);
+}
+
+async function loadSaveAndApply(W: World, slot: SlotIndex = 1): Promise<boolean> {
+  const file = await W.saveAdapter.load(slot);
+  if (!file) return false;
+  const s = file.state;
+  // Restore zone first — that resets player position to entry. Then we
+  // overwrite their HP / inventory / equipment from the save.
+  loadZone(W, s.zoneId, null);
+  W.player.actor.hp = s.playerHp;
+  W.inventory.slots = s.inventory.slots;
+  W.player.actor.equipment = s.equipment;
+  W.player.actor.derivedStats = computeDerivedStats(
+    W.player.actor.stats.atk,
+    W.player.actor.stats.maxHp,
+    W.player.actor.equipment,
+  );
+  W.player.actor.hp = Math.min(W.player.actor.hp, W.player.actor.derivedStats.maxHp);
+  W.killCount = s.killCount;
+  W.quests = s.quests;
+  W.characterName = file.characterName;
+  W.saveCreatedAt = file.createdAt;
+  W.hpBar.set(W.player.actor.hp, W.player.actor.derivedStats.maxHp);
+  syncStore(W);
+  return true;
 }
 
 function bindIntentHandlers(W: World): void {
@@ -565,10 +940,9 @@ function bindIntentHandlers(W: World): void {
   });
 }
 
-function bindKeyboard(): void {
+function bindKeyboard(W: World): void {
   window.addEventListener('keydown', (e: KeyboardEvent) => {
     if (e.repeat) return;
-    // Don't interfere with form inputs (none yet, but future-proof).
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
 
@@ -579,10 +953,19 @@ function bindKeyboard(): void {
     } else if (key === 'c') {
       dispatchPanelToggle({ id: 'character' });
       e.preventDefault();
+    } else if (key === 'q') {
+      window.dispatchEvent(new CustomEvent(QUEST_TOGGLE_EVENT));
+      e.preventDefault();
+    } else if (key === 's') {
+      // Per spec §8: manual save in hubs only (anti-save-scum).
+      if (W.currentZone.id === 'whitestone') {
+        void autoSave(W).catch((err) => console.error('manual save failed:', err));
+      }
+      e.preventDefault();
     } else if (key === 'escape') {
-      // Close every panel.
       const ids: PanelId[] = ['inventory', 'character', 'bind'];
       for (const id of ids) dispatchPanelToggle({ id, open: false });
+      window.dispatchEvent(new CustomEvent('wyrdloom:npc-dialog-close'));
       e.preventDefault();
     } else if (['1', '2', '3', '4'].includes(key)) {
       const slot = Number(key) - 1;
@@ -678,21 +1061,44 @@ function tickPlayer(W: World, nowMs: number): void {
           player.goal = null;
           W.playerPath = null;
           W.target.visible = false;
-          // Roll a drop. Seed includes kill count so each kill is independent.
+          const isBoss = targetView.actor.id === HOLLOW_BISHOP_ID;
+          // Roll a drop. Boss is guaranteed to drop a high-tier item using a
+          // boss-pinned seed; grunts use the random seed they had pre-v0.6.0.
           W.killCount += 1;
+          const dropSeed = isBoss
+            ? `boss-${HOLLOW_BISHOP_ID}-${W.killCount}`
+            : `${targetView.actor.id}-${W.killCount}-${Math.floor(nowMs)}`;
           const item = rollDrop({
-            monsterLevel: 5,
-            seed: `${targetView.actor.id}-${W.killCount}-${Math.floor(nowMs)}`,
+            monsterLevel: isBoss ? 12 : 5,
+            seed: dropSeed,
           });
           if (item) {
             const dropTile = { ...targetView.actor.tile };
             const groundView = spawnGroundItem(W.world, W.app.ticker, item, dropTile);
             W.groundItems.push(groundView);
           }
-          W.enemyRespawnQueue.push({
-            id: targetView.actor.id,
-            spawnAt: nowMs + RESPAWN_ENEMY_DELAY_MS,
-          });
+          // Quest events.
+          if (isBoss) {
+            const done = onBossKilled(W.quests, HOLLOW_BISHOP_ID);
+            for (const id of done) activateNextMainAfter(W.quests, id);
+            void autoSave(W).catch((err) => console.error('autoSave failed:', err));
+          } else {
+            const done = onEnemyKilled(W.quests, W.currentZone.id);
+            for (const id of done) activateNextMainAfter(W.quests, id);
+          }
+          syncStore(W);
+          // Bosses don't respawn; grunts do.
+          if (!isBoss) {
+            W.enemyRespawnQueue.push({
+              id: targetView.actor.id,
+              spawnAt: nowMs + RESPAWN_ENEMY_DELAY_MS,
+            });
+          }
+        } else {
+          // If this attack just dropped the Hollow Bishop into a new phase,
+          // re-stat it. The phase mod scales atk + cooldown; stats stays
+          // as-is so derivedStats-style recompute would zero it.
+          if (targetView.actor.id === HOLLOW_BISHOP_ID) maybeAdvanceBossPhase(W, targetView);
         }
       }
       return; // adjacent — don't try to move into the enemy
@@ -724,6 +1130,20 @@ function tickPlayer(W: World, nowMs: number): void {
     player.goal = null;
     W.playerPath = null;
     W.target.visible = false;
+    // Doorway transition fires on arrival.
+    if (W.pendingZoneTarget) {
+      const target = W.pendingZoneTarget;
+      const from = W.currentZone.id;
+      W.pendingZoneTarget = null;
+      loadZone(W, target, from);
+      return;
+    }
+    // NPC interaction fires on arrival adjacent.
+    if (W.pendingNpcInteract) {
+      const npc = W.npcs.find((n) => n.def.id === W.pendingNpcInteract);
+      if (npc) openNpcDialog(W, npc.def);
+      W.pendingNpcInteract = null;
+    }
     return;
   }
   player.tile = { tx: next.tx, ty: next.ty };
@@ -771,19 +1191,6 @@ function showTarget(W: World, tile: TileCoord, hostile: boolean): void {
 function centerCamera(app: Application, camera: Container, tile: TileCoord): void {
   const { sx, sy } = tileToScreen(tile.tx, tile.ty);
   camera.position.set(app.screen.width / 2 - sx, app.screen.height / 2 - sy);
-}
-
-// Catacombs color grade — pulled toward cool blue-grey, slightly desaturated,
-// dimmed. Applied to the world container (tiles + actors); HUD is unaffected.
-function makeCatacombsGrade(): ColorMatrixFilter {
-  const f = new ColorMatrixFilter();
-  // Slight desaturation
-  f.saturate(-0.25, false);
-  // Cool the palette by tinting blue-green
-  f.tint(0x9aa6c0, true);
-  // Dim overall brightness
-  f.brightness(0.85, true);
-  return f;
 }
 
 // Random walkable tile, used for enemy respawn placement. Limited tries; falls

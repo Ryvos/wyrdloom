@@ -1,6 +1,6 @@
 {
   "name": "wyrdloom",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Single-player isometric action-RPG. Web + native (Tauri). MIT-licensed source, CC0/CC-BY/OFL assets only.",
   "type": "module",
   "private": true,

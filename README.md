@@ -2,9 +2,22 @@
 
 Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open-source**, **MIT-licensed**, **no telemetry**, **no microtransactions**, **no online-only DRM**. Ships as both a browser demo and signed native desktop binaries from the same TypeScript source.
 
-> Status: **v0.5.0 — Week 5: BSP procgen + Catacombs + A* pathfinding.** 32×32 dungeon generated from a deterministic seed; flood-fill validator gates layout; A* drives both player click-to-walk and enemy chase; Catacombs `ColorMatrixFilter` color grade. See `RELEASE_NOTES_v0.5.md`.
+> Status: **v0.6.0 — Week 6: Whitestone hub + zone system + 4-quest spine + Hollow Bishop boss + SaveAdapter.** Player now boots into the Whitestone town hub, talks to the Quest-board NPC, and descends into the procgen catacombs through a doorway tile. Three Act-I quests progress sequentially; Hollow Bishop has 3-phase combat. Save state persists to IndexedDB on web (Tauri FS adapter wired but untested at runtime). See `RELEASE_NOTES_v0.6.md`.
 
 ![v0.5.0 dungeon spike](docs/v0.5.0-spike.png)
+
+## What's in v0.6.0
+
+- **Zone system** (`src/systems/zone.ts`): doorway tiles transition the player between zones; per-zone player entry tile, NPC list, and color grade
+- **Whitestone hub** (`src/levels/whitestone.ts`): hand-authored 16×16 town courtyard with the Quest-board NPC; warm color filter contrasts with the cold catacombs grade
+- **Catacombs zone** (`src/levels/catacombs.ts`): wraps v0.5.0 BSP procgen; doorway returns the player next to the Whitestone south gate
+- **NPC system** (`src/actors/Npc.ts` + `src/fx/npc_sprite.ts`): `questboard` NPC kind ships in v0.6.0; `smith`, `imbuer`, `stash` placeholders ready for v0.7.0–v0.8.0
+- **Quest system** (`src/systems/quests.ts` + `data/quests.json`): four authored quests — intro `q-intro-descend` (auto-active, completes on first catacombs entry), `q-act1-bones` (kill 3 grunts), `q-act1-relic` (rare pickup), `q-act1-bishop` (boss kill). Sequential main-quest unlock chain via `activateNextMainAfter`
+- **Quest tracker HUD** (`src/ui/quest_tracker.ts`): compact lowest-order-active view; `Q` toggles expanded all-quests panel
+- **NPC dialog HUD** (`src/ui/npc_dialog.ts`): Quest-board renders the active + completed quest list; `Esc` closes
+- **Hollow Bishop boss** (`src/actors/Actor.ts` + `src/fx/sprites.ts`): 200 HP, 3-phase combat at 67% / 33% HP thresholds — atk scales 1.0 → 1.4 → 1.8 and cooldown shrinks 1.0 → 0.8 → 0.65. No respawn; guaranteed boss-tier drop
+- **SaveAdapter v1** (`src/platform/SaveAdapter.ts`): 5 character slots, schema-versioned migrate() walker, `WebSaveAdapter` (IndexedDB via `idb`) live on web, `TauriSaveAdapter` (FS plugin) wired for native. `S` saves in the hub; auto-save fires on zone change, equip/unequip, and boss kill
+- **17 new unit tests** (10 quests + 7 save_adapter) and **8 new e2e tests** (hub_quests.spec.ts) — 67/67 unit and 72/72 e2e green across Chromium + WebKit
 
 ## What's in v0.5.0
 
@@ -74,7 +87,7 @@ Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open
 | Tests | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) |
 | Pkg mgr | [bun](https://bun.sh) (preferred) — `pnpm` fallback |
 
-## Controls (v0.5.0)
+## Controls (v0.6.0)
 
 | Action | Binding |
 |---|---|
@@ -83,13 +96,17 @@ Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open
 | Walk to loot | Left-click a ground item — player A*-walks there |
 | Pick up loot | Left-click a ground item *while standing on it* — goes into the bag (no auto-equip) |
 | Inspect ground loot | Hover a ground item — tooltip shows name, base stat, affixes, and current-equipped compare |
+| Talk to NPC | Left-click a Whitestone NPC — player A*-walks to an adjacent floor tile, then opens dialog |
+| Change zone | Walk onto a doorway tile (Whitestone south gate ↔ Catacombs entrance) |
 | Inventory | `I` toggles the 10×4 bag panel; left-click a cell to equip; right-click to drop on the floor |
 | Character | `C` toggles the paper-doll panel; click an equipped slot to unequip back to the bag |
+| Quests | `Q` toggles the expanded quest panel (compact tracker is always on the right edge) |
+| Save | `S` saves to slot 1 — only allowed in the Whitestone hub (anti-save-scum, spec §8) |
 | Hotbar | Keys 1-4 trigger bound skills (only `melee` exists today); left-click slot opens bind flow; right-click clears |
-| Close panel | `Esc` closes every open panel |
-| Quit | Close the window — there's no menu yet |
+| Close panel | `Esc` closes every open panel + the NPC dialog |
+| Quit | Close the window — there's no title screen yet |
 
-Vendor UI, gold, talent grid land in v0.6.0–v0.8.0 per spec §10.
+Vendor UI, gold, talent grid land in v0.7.0–v0.8.0 per spec §10.
 
 ## Build from source
 

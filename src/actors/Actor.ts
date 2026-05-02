@@ -49,6 +49,40 @@ export const ENEMY_STATS: ActorStats = {
   moveCooldownMs: 250, // slower than player so kiting is possible
 };
 
+// Hollow Bishop — Act I final boss. Three phases per spec §5 (3 phases each
+// for designed boss fights). HP-gated transitions; phase logic flips atk +
+// cooldown so the fight reads visually different each third of HP.
+export const HOLLOW_BISHOP_STATS: ActorStats = {
+  maxHp: 200,
+  atk: 12,           // phase 1 baseline (gets buffed at phase shifts)
+  atkRange: 1,
+  atkCooldownMs: 900,
+  aggroRange: 8,
+  moveCooldownMs: 220,
+};
+
+// Phase thresholds (HP fraction). Phase 1: 100..67%, Phase 2: 67..33%, Phase 3: 33..0%.
+export const HOLLOW_BISHOP_PHASE_THRESHOLDS = [0.67, 0.33] as const;
+
+// Phase modifier — multiplies atk and shrinks cooldown per phase.
+export interface PhaseMod {
+  readonly atkMul: number;
+  readonly cooldownMul: number;
+}
+export const HOLLOW_BISHOP_PHASE_MODS: readonly [PhaseMod, PhaseMod, PhaseMod] = [
+  { atkMul: 1.0, cooldownMul: 1.0 },   // phase 1 — baseline
+  { atkMul: 1.4, cooldownMul: 0.8 },   // phase 2 — faster + harder
+  { atkMul: 1.8, cooldownMul: 0.65 },  // phase 3 — desperate, dangerous
+];
+
+export function bossPhase(hp: number, maxHp: number): 1 | 2 | 3 {
+  if (maxHp <= 0) return 1;
+  const frac = hp / maxHp;
+  if (frac > HOLLOW_BISHOP_PHASE_THRESHOLDS[0]) return 1;
+  if (frac > HOLLOW_BISHOP_PHASE_THRESHOLDS[1]) return 2;
+  return 3;
+}
+
 export function makeActor(id: string, kind: ActorKind, stats: ActorStats, tile: TileCoord): Actor {
   return {
     id,

@@ -52,6 +52,19 @@ interface Window {
       entrance: { tx: number; ty: number };
       boss: { tx: number; ty: number };
     };
+    readonly zoneId: 'whitestone' | 'catacombs';
+    readonly npcs: ReadonlyArray<{
+      id: string;
+      kind: 'questboard' | 'smith' | 'imbuer' | 'stash';
+      name: string;
+      tile: { tx: number; ty: number };
+    }>;
+    readonly quests: ReadonlyArray<{
+      id: string;
+      status: 'inactive' | 'active' | 'completed';
+      current: number;
+    }>;
+    readonly hollowBishopPhase: number;
     isFloor(tx: number, ty: number): boolean;
     readonly dev: {
       setPlayerHp(n: number): void;
@@ -65,6 +78,18 @@ interface Window {
       teleportPlayer(tx: number, ty: number): boolean;
       teleportEnemy(id: string, tx: number, ty: number): boolean;
       attackEnemy(id: string): boolean;
+      changeZone(target: 'whitestone' | 'catacombs'): void;
+      saveNow(slot?: number): Promise<void>;
+      loadSlot(slot?: number): Promise<boolean>;
+      deleteSlot(slot?: number): Promise<void>;
+      listSlots(): Promise<Array<{
+        slot: number;
+        characterName: string;
+        zoneId: string;
+        updatedAt: number;
+        version: string;
+      }>>;
+      openNpcByKind(kind: 'questboard' | 'smith' | 'imbuer' | 'stash'): Promise<boolean>;
     };
   };
 }

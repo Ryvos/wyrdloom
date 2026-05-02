@@ -31,6 +31,35 @@ export function makeEnemySprite(): Container {
   return c;
 }
 
+export function makeHollowBishopSprite(): Container {
+  const c = new Container();
+  // Tall robed silhouette — clearly distinct from grunts.
+  const body = new Graphics();
+  body.poly([
+    { x: -11, y: TILE_H / 2 + 12 },
+    { x: 11, y: TILE_H / 2 + 12 },
+    { x: 7, y: -TILE_H / 2 - 4 },
+    { x: -7, y: -TILE_H / 2 - 4 },
+  ]).fill(0x3a1a2a).stroke({ color: 0x1a0814, width: 2 });
+  // Cowl over the head
+  body.poly([
+    { x: -8, y: -TILE_H / 2 - 4 },
+    { x: 8, y: -TILE_H / 2 - 4 },
+    { x: 6, y: -TILE_H / 2 - 16 },
+    { x: -6, y: -TILE_H / 2 - 16 },
+  ]).fill(0x2a0e1a).stroke({ color: 0x1a0814, width: 2 });
+  // Glowing eye slot
+  body.rect(-3, -TILE_H / 2 - 12, 6, 2).fill(0xb84a3a);
+  // Mitre / crown at the top
+  body.poly([
+    { x: -6, y: -TILE_H / 2 - 16 },
+    { x: 6, y: -TILE_H / 2 - 16 },
+    { x: 0, y: -TILE_H / 2 - 22 },
+  ]).fill(0xc7b27a).stroke({ color: 0x1a0814, width: 1.5 });
+  c.addChild(body);
+  return c;
+}
+
 // Square attack-flash overlay; tweens via the caller.
 export function makeHitFlash(): Graphics {
   const g = new Graphics();

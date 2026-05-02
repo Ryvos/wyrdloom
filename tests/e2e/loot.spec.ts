@@ -1,19 +1,18 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 // Seed handpicked from offline probe — yields a magic Honed Iron Sword of Malice
 // (weapon, baseDamage 10, +Honed atk_flat, +of-Malice atk_flat).
 const WEAPON_SEED = 'weapon-seed-17';
 
-test.describe('loot pipeline (v0.5.0 — pickup goes into bag, dungeon-aware)', () => {
+test.describe('loot pipeline (pickup goes into bag, zone-aware)', () => {
   test('forceDrop deterministically yields the same item for a given seed', async ({ page }) => {
     await page.goto('/');
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, VERSION);
 
-    // Default forceDrop drops at the enemy's tile, which in v0.5.0 is the
-    // boss room. Pin to the player's tile so the test stays in view-range
-    // and doesn't depend on dungeon-traversal timing.
+    // Drop at the player's tile so viewport-centered click in the next test
+    // hits it. Works in any zone (hub or catacombs).
     await page.evaluate((s) => {
       const p = window.__wyrdloom.playerTile;
       window.__wyrdloom.dev.forceDrop(s, p);

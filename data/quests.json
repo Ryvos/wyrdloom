@@ -1,0 +1,44 @@
+{
+  "quests": [
+    {
+      "id": "q-intro-descend",
+      "title": "Whispers from below",
+      "summary": "The catacombs below Whitestone are stirring. Step through the doorway in the southern courtyard.",
+      "objective": { "kind": "enter_zone", "zone": "catacombs", "count": 1 },
+      "reward": "200 XP (when XP arrives in v0.7.0)",
+      "act": 1,
+      "main": true,
+      "order": 0
+    },
+    {
+      "id": "q-act1-bones",
+      "title": "Sweep the chambers",
+      "summary": "Slay 3 of the wandering catacombs dead to thin them before the bishop arrives.",
+      "objective": { "kind": "kill_count", "zone": "catacombs", "count": 3 },
+      "reward": "Magic-tier item",
+      "act": 1,
+      "main": true,
+      "order": 1
+    },
+    {
+      "id": "q-act1-relic",
+      "title": "The Wyrd-knot relic",
+      "summary": "Recover any rare-tier item from the catacombs and bring it back to Whitestone.",
+      "objective": { "kind": "rare_pickup", "count": 1 },
+      "reward": "Rare-tier weapon",
+      "act": 1,
+      "main": true,
+      "order": 2
+    },
+    {
+      "id": "q-act1-bishop",
+      "title": "Hollow Bishop",
+      "summary": "Reach the boss room and end the Hollow Bishop. The way to Frostmoor opens with their fall.",
+      "objective": { "kind": "boss_kill", "bossId": "hollow-bishop", "count": 1 },
+      "reward": "Unique-tier mythic shard (Act II key)",
+      "act": 1,
+      "main": true,
+      "order": 3
+    }
+  ]
+}

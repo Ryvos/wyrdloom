@@ -23,6 +23,9 @@
     "allowImportingTsExtensions": false,
     "noEmit": true,
 
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],

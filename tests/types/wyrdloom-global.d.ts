@@ -35,9 +35,23 @@ interface Window {
       name: string;
       rarity: string;
     }>;
+    readonly inventory: ReadonlyArray<{
+      uid: string;
+      name: string;
+      rarity: string;
+      slot: string;
+      x: number;
+      y: number;
+    }>;
+    readonly hotbar: ReadonlyArray<{ skillId: string; label: string } | null>;
     readonly dev: {
       setPlayerHp(n: number): void;
       forceDrop(seed: string, tile?: { tx: number; ty: number }): void;
+      giveItem(seed: string): void;
+      openPanel(id: 'inventory' | 'character' | 'bind'): void;
+      closeAllPanels(): void;
+      equipFromInventoryByUid(uid: string): void;
+      unequipSlot(slot: 'weapon' | 'head' | 'chest' | 'ring'): void;
     };
   };
 }

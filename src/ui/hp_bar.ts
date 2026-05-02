@@ -18,15 +18,14 @@ export function mountHpBar(parent: HTMLElement): HpBar {
     host.id = HOST_ID;
     host.style.cssText = `
       position: absolute;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%);
+      bottom: 16px;
+      left: 16px;
       width: 240px;
       pointer-events: auto;
       font-family: ui-monospace, monospace;
       font-size: 12px;
       color: #d8d2bf;
-      text-align: center;
+      text-align: left;
     `;
     host.innerHTML = `
       <div data-testid="hp-readout" style="margin-bottom: 4px; opacity: 0.85;">HP 100 / 100</div>

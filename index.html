@@ -44,9 +44,9 @@
       }
       #hud .hint {
         position: absolute;
-        bottom: 12px;
+        top: 36px;
         left: 16px;
-        font-size: 12px;
+        font-size: 11px;
         opacity: 0.5;
       }
       #hud [data-debug] {
@@ -62,9 +62,9 @@
   <body>
     <div id="app"></div>
     <div id="hud" aria-hidden="true">
-      <div class="title">WYRDLOOM &mdash; v0.3.0 spike</div>
+      <div class="title">WYRDLOOM &mdash; v0.4.0 spike</div>
       <div data-debug data-testid="debug-readout">init…</div>
-      <div class="hint">Left-click empty tile to move &middot; left-click enemy to attack &middot; Esc not yet wired</div>
+      <div class="hint">Click empty: move &middot; click enemy: attack &middot; click loot: pickup &middot; I: inventory &middot; C: character &middot; 1-4: hotbar</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

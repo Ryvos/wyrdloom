@@ -2,9 +2,23 @@
 
 Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open-source**, **MIT-licensed**, **no telemetry**, **no microtransactions**, **no online-only DRM**. Ships as both a browser demo and signed native desktop binaries from the same TypeScript source.
 
-> Status: **v0.3.0 — Week 3: loot pipeline.** Combat from v0.2.0 + items dropping on death + rarity tiers + affixes + ground glow + tooltip on hover + click-to-pickup + equipped-weapon damage flowing into combat. See `RELEASE_NOTES_v0.3.md`.
+> Status: **v0.4.0 — Week 4: inventory + character + hotbar + bind.** Loot pipeline from v0.3.0 + 10×4 D2 inventory grid + paper-doll character sheet + 4-slot skill hotbar + skill-binding flow. All HUD panels are Lit 3 web components. See `RELEASE_NOTES_v0.4.md`.
 
-![v0.3.0 spike screenshot](docs/v0.3.0-spike.png)
+![v0.4.0 inventory screenshot](docs/v0.4.0-inventory.png)
+![v0.4.0 character screenshot](docs/v0.4.0-character.png)
+
+## What's in v0.4.0
+
+- 10×4 inventory grid (`src/systems/bag.ts`) with item-footprint API — 1×1 today, multi-cell ready for v0.5.0
+- Pickup → bag (no auto-equip); equip is an explicit click on the inventory cell. Replaced gear returns to bag, or drops to floor if bag is now full
+- Paper-doll character sheet with weapon/head/chest/ring slots + derived-stat readout (`Attack 44 (base 25 +19)` style deltas)
+- 4-slot skill hotbar at bottom-center; keys 1-4; click empty slot opens bind flow; right-click clears
+- Bind-skill panel listing available skills (`melee` only in v0.4.0; full four-skill set in v0.5.0)
+- DOM panels using **Lit 3.x** Web Components — `I` toggles inventory, `C` toggles character, `Esc` closes everything
+- One-way game-state bridge (`src/ui/store.ts`): panels read state + emit intents, game loop writes state and routes effects
+- HUD reshuffle: HP bar bottom-left, hotbar bottom-center, debug top-right
+- 7 new Vitest unit tests for `bag.ts` placement / overflow / removal
+- 9 new Playwright e2e tests across inventory, character, and bind flows (Chromium + WebKit)
 
 ## What's in v0.3.0
 
@@ -44,24 +58,29 @@ Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open
 | Language | TypeScript 5.x strict |
 | Bundler | [Vite 6](https://vite.dev) |
 | Native shell | [Tauri 2.x](https://tauri.app) (MIT/Apache-2.0) |
+| HUD framework | [Lit 3.x](https://lit.dev) (BSD-3-Clause) — Web Components for menu panels |
 | Audio | [howler.js](https://howlerjs.com) (MIT) — wired for v0.6.0 |
 | Storage | [idb](https://github.com/jakearchibald/idb) (ISC) for web, `@tauri-apps/api/fs` for native |
 | Procgen RNG | [seedrandom](https://github.com/davidbau/seedrandom) (MIT) |
 | Tests | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) |
 | Pkg mgr | [bun](https://bun.sh) (preferred) — `pnpm` fallback |
 
-## Controls (v0.3.0)
+## Controls (v0.4.0)
 
 | Action | Binding |
 |---|---|
 | Move | Left-click an empty tile |
 | Attack enemy | Left-click an enemy (player walks into melee, then auto-attacks) |
 | Walk to loot | Left-click a ground item — player walks there |
-| Pick up loot | Left-click a ground item *while standing on it* — equips, replacing the previous slot occupant (which drops back at your feet) |
-| Inspect loot | Hover the cursor over a ground item — tooltip shows name, base stat, affixes, and current-equipped compare |
+| Pick up loot | Left-click a ground item *while standing on it* — goes into the bag (no auto-equip) |
+| Inspect ground loot | Hover a ground item — tooltip shows name, base stat, affixes, and current-equipped compare |
+| Inventory | `I` toggles the 10×4 bag panel; left-click a cell to equip; right-click to drop on the floor |
+| Character | `C` toggles the paper-doll panel; click an equipped slot to unequip back to the bag |
+| Hotbar | Keys 1-4 trigger bound skills (only `melee` exists in v0.4.0); left-click slot opens bind flow; right-click clears |
+| Close panel | `Esc` closes every open panel |
 | Quit | Close the window — there's no menu yet |
 
-Full keymap (hotbar, inventory, character, talents, …) lands by Week 4.
+Vendor UI, gold, talent grid land in v0.6.0–v0.8.0 per spec §10.
 
 ## Build from source
 

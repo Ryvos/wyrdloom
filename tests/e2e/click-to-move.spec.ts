@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const TARGET_VERSION = '0.3.0';
+const TARGET_VERSION = '0.4.0';
 
 test.describe('boot + movement', () => {
   test('boots without console errors', async ({ page }) => {

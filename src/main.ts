@@ -1,6 +1,6 @@
-// WYRDLOOM v0.3.0 spike — combat + loot pipeline.
-// New in v0.3.0: enemies drop items on death, ground items glow + label,
-// click to pick up, equipped weapon affects player atk, tooltip on hover.
+// WYRDLOOM v0.4.0 — Week 4: inventory + character + hotbar + bind-skill.
+// New in v0.4.0: pickup goes into a 10×4 bag (Lit panel I), paper-doll
+// character sheet (panel C), 4-slot skill hotbar with bind flow.
 
 import { Application, Container, Graphics, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
@@ -14,11 +14,37 @@ import { spawnDamagePopup } from './fx/damage_popup';
 import { mountHpBar } from './ui/hp_bar';
 import type { HpBar } from './ui/hp_bar';
 import { rollDrop } from './systems/loot';
-import { computeDerivedStats, equip } from './systems/inventory';
+import { computeDerivedStats, equip, unequip } from './systems/inventory';
+import {
+  makeInventory,
+  addItem,
+  removeItem,
+  hasRoomFor,
+  type Inventory,
+} from './systems/bag';
 import { spawnGroundItem } from './fx/ground_item';
 import type { GroundItemView } from './fx/ground_item';
 import { mountTooltip } from './ui/tooltip';
 import type { Tooltip } from './ui/tooltip';
+import {
+  gameState,
+  notifyState,
+  INTENT_EQUIP_EVENT,
+  INTENT_UNEQUIP_EVENT,
+  INTENT_DROP_EVENT,
+  type EquipIntent,
+  type UnequipIntent,
+  type DropIntent,
+} from './ui/store';
+import { dispatchPanelToggle, type PanelId } from './ui/panel';
+import { SKILL_TRIGGER_EVENT } from './ui/hotbar';
+import type { Slot } from './types/items';
+
+// Side-effect imports — register the custom elements with the browser.
+import './ui/inventory_panel';
+import './ui/character_panel';
+import './ui/hotbar';
+import './ui/bind_panel';
 
 const GRID_W = 12;
 const GRID_H = 12;
@@ -42,6 +68,7 @@ interface World {
   readonly tooltip: Tooltip;
   readonly player: ActorView;
   readonly enemies: ActorView[];
+  readonly inventory: Inventory;
   groundItems: GroundItemView[];
   playerDeadAt: number;
   enemyRespawnQueue: { id: string; spawnAt: number }[];
@@ -102,12 +129,20 @@ async function main(): Promise<void> {
     tooltip,
     player: playerView,
     enemies: [enemyView],
+    inventory: makeInventory(),
     groundItems: [],
     playerDeadAt: 0,
     enemyRespawnQueue: [],
     killCount: 0,
     hoveringItemId: null,
   };
+
+  // Mount Lit panels into #hud. They're hidden until toggled.
+  mountPanels(hud);
+  // Wire reactive store + intent handlers (equip / unequip / drop / hotbar).
+  syncStore(W);
+  bindIntentHandlers(W);
+  bindKeyboard();
 
   bindClickHandler(W);
   bindHoverHandler(W);
@@ -166,7 +201,22 @@ async function main(): Promise<void> {
         rarity: item.rarity,
       }));
     },
-    version: '0.3.0',
+    get inventory() {
+      return W.inventory.slots.map((s) => ({
+        uid: s.item.uid,
+        name: s.item.name,
+        rarity: s.item.rarity,
+        slot: s.item.slot,
+        x: s.x,
+        y: s.y,
+      }));
+    },
+    get hotbar() {
+      return gameState.hotbar.map((b) =>
+        b ? { skillId: b.skillId, label: b.label } : null,
+      );
+    },
+    version: '0.4.0',
     dev: {
       setPlayerHp(n: number): void {
         playerActor.hp = Math.max(0, Math.min(playerActor.derivedStats.maxHp, n));
@@ -197,6 +247,28 @@ async function main(): Promise<void> {
         }
         const view = spawnGroundItem(W.world, W.app.ticker, item, where);
         W.groundItems.push(view);
+      },
+      // Bypass walking + ground spawn — drop straight into the bag.
+      giveItem(seed: string): void {
+        const item = rollDrop({ monsterLevel: 5, seed });
+        if (!item) return;
+        if (!hasRoomFor(W.inventory, item)) return;
+        addItem(W.inventory, item);
+        syncStore(W);
+      },
+      openPanel(id: 'inventory' | 'character' | 'bind'): void {
+        dispatchPanelToggle({ id, open: true });
+      },
+      closeAllPanels(): void {
+        for (const id of ['inventory', 'character', 'bind'] as const) {
+          dispatchPanelToggle({ id, open: false });
+        }
+      },
+      equipFromInventoryByUid(uid: string): void {
+        equipFromInventory(W, uid);
+      },
+      unequipSlot(slot: Slot): void {
+        unequipToInventory(W, slot);
       },
     },
   };
@@ -287,28 +359,155 @@ function bindHoverHandler(W: World): void {
   });
 }
 
-function pickUp(W: World, view: GroundItemView): void {
+// v0.4.0: pickup goes into the bag (no auto-equip). If the bag is full,
+// the item stays on the ground and the pickup is rejected.
+function pickUp(W: World, view: GroundItemView): boolean {
+  if (!hasRoomFor(W.inventory, view.item)) {
+    return false;
+  }
+  addItem(W.inventory, view.item);
+
+  W.groundItems = W.groundItems.filter((g) => g.item.uid !== view.item.uid);
+  view.destroy();
+  W.tooltip.hide();
+  syncStore(W);
+  return true;
+}
+
+// Equip from inventory: pull the item out of the bag, equip it, and put any
+// previously-equipped item back into the bag (or drop it on the floor if the
+// bag is now full because the new item was the last empty cell).
+function equipFromInventory(W: World, uid: string): void {
+  const inSlot = W.inventory.slots.find((s) => s.item.uid === uid);
+  if (!inSlot) return;
+  removeItem(W.inventory, uid);
   const player = W.player.actor;
-  const replaced = equip(player.equipment, view.item);
-  // Recompute derived stats — reads base + every equipped item.
+  const replaced = equip(player.equipment, inSlot.item);
+  if (replaced) {
+    if (hasRoomFor(W.inventory, replaced)) {
+      addItem(W.inventory, replaced);
+    } else {
+      // No room — drop at the player's tile.
+      const replacedView = spawnGroundItem(W.world, W.app.ticker, replaced, {
+        ...player.tile,
+      });
+      W.groundItems.push(replacedView);
+    }
+  }
+  recomputeStats(W);
+  syncStore(W);
+}
+
+function unequipToInventory(W: World, slot: Slot): void {
+  const player = W.player.actor;
+  const removed = unequip(player.equipment, slot);
+  if (!removed) return;
+  if (hasRoomFor(W.inventory, removed)) {
+    addItem(W.inventory, removed);
+  } else {
+    // Bag full — drop on the ground.
+    const view = spawnGroundItem(W.world, W.app.ticker, removed, { ...player.tile });
+    W.groundItems.push(view);
+  }
+  recomputeStats(W);
+  syncStore(W);
+}
+
+function dropFromInventory(W: World, uid: string): void {
+  const inSlot = W.inventory.slots.find((s) => s.item.uid === uid);
+  if (!inSlot) return;
+  removeItem(W.inventory, uid);
+  const view = spawnGroundItem(W.world, W.app.ticker, inSlot.item, {
+    ...W.player.actor.tile,
+  });
+  W.groundItems.push(view);
+  syncStore(W);
+}
+
+function recomputeStats(W: World): void {
+  const player = W.player.actor;
   player.derivedStats = computeDerivedStats(
     player.stats.atk,
     player.stats.maxHp,
     player.equipment,
   );
-  // Don't let HP exceed the new maxHp if it shrunk.
   player.hp = Math.min(player.hp, player.derivedStats.maxHp);
   W.hpBar.set(player.hp, player.derivedStats.maxHp);
+}
 
-  // Remove the ground view; if a previous item was replaced, drop it back here.
-  W.groundItems = W.groundItems.filter((g) => g.item.uid !== view.item.uid);
-  view.destroy();
-  W.tooltip.hide();
+function syncStore(W: World): void {
+  const player = W.player.actor;
+  gameState.inventory = W.inventory;
+  gameState.equipment = player.equipment;
+  gameState.derived = player.derivedStats;
+  gameState.baseAtk = player.stats.atk;
+  gameState.baseMaxHp = player.stats.maxHp;
+  notifyState();
+}
 
-  if (replaced) {
-    const replacedView = spawnGroundItem(W.world, W.app.ticker, replaced, { ...player.tile });
-    W.groundItems.push(replacedView);
-  }
+function mountPanels(hud: HTMLElement): void {
+  const inventory = document.createElement('wyrd-inventory');
+  const character = document.createElement('wyrd-character');
+  const bind = document.createElement('wyrd-bind');
+  const hotbar = document.createElement('wyrd-hotbar');
+  hud.appendChild(inventory);
+  hud.appendChild(character);
+  hud.appendChild(bind);
+  hud.appendChild(hotbar);
+}
+
+function bindIntentHandlers(W: World): void {
+  window.addEventListener(INTENT_EQUIP_EVENT, (e: Event) => {
+    const detail = (e as CustomEvent<EquipIntent>).detail;
+    if (detail) equipFromInventory(W, detail.uid);
+  });
+  window.addEventListener(INTENT_UNEQUIP_EVENT, (e: Event) => {
+    const detail = (e as CustomEvent<UnequipIntent>).detail;
+    if (detail) unequipToInventory(W, detail.slot);
+  });
+  window.addEventListener(INTENT_DROP_EVENT, (e: Event) => {
+    const detail = (e as CustomEvent<DropIntent>).detail;
+    if (detail) dropFromInventory(W, detail.uid);
+  });
+  // Hotbar trigger — for v0.4.0 the only skill is `melee`, which is already
+  // wired to click-to-attack. Keep this pure observation; v0.5.0 adds real
+  // skill execution.
+  window.addEventListener(SKILL_TRIGGER_EVENT, () => {
+    /* no-op until v0.5.0 */
+  });
+}
+
+function bindKeyboard(): void {
+  window.addEventListener('keydown', (e: KeyboardEvent) => {
+    if (e.repeat) return;
+    // Don't interfere with form inputs (none yet, but future-proof).
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+
+    const key = e.key.toLowerCase();
+    if (key === 'i') {
+      dispatchPanelToggle({ id: 'inventory' });
+      e.preventDefault();
+    } else if (key === 'c') {
+      dispatchPanelToggle({ id: 'character' });
+      e.preventDefault();
+    } else if (key === 'escape') {
+      // Close every panel.
+      const ids: PanelId[] = ['inventory', 'character', 'bind'];
+      for (const id of ids) dispatchPanelToggle({ id, open: false });
+      e.preventDefault();
+    } else if (['1', '2', '3', '4'].includes(key)) {
+      const slot = Number(key) - 1;
+      const binding = gameState.hotbar[slot];
+      if (binding) {
+        window.dispatchEvent(
+          new CustomEvent(SKILL_TRIGGER_EVENT, {
+            detail: { slot, skillId: binding.skillId },
+          }),
+        );
+      }
+    }
+  });
 }
 
 function onTick(W: World, nowMs: number): void {

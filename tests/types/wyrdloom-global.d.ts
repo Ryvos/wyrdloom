@@ -52,7 +52,7 @@ interface Window {
       entrance: { tx: number; ty: number };
       boss: { tx: number; ty: number };
     };
-    readonly zoneId: 'whitestone' | 'catacombs';
+    readonly zoneId: 'whitestone' | 'catacombs' | 'frostvein';
     readonly npcs: ReadonlyArray<{
       id: string;
       kind: 'questboard' | 'smith' | 'imbuer' | 'stash';
@@ -65,6 +65,10 @@ interface Window {
       current: number;
     }>;
     readonly hollowBishopPhase: number;
+    readonly wormMotherPhase: number;
+    readonly classId: string | null;
+    readonly resource: number;
+    readonly resourceMax: number;
     isFloor(tx: number, ty: number): boolean;
     readonly dev: {
       setPlayerHp(n: number): void;
@@ -78,7 +82,7 @@ interface Window {
       teleportPlayer(tx: number, ty: number): boolean;
       teleportEnemy(id: string, tx: number, ty: number): boolean;
       attackEnemy(id: string): boolean;
-      changeZone(target: 'whitestone' | 'catacombs'): void;
+      changeZone(target: 'whitestone' | 'catacombs' | 'frostvein'): void;
       saveNow(slot?: number): Promise<void>;
       loadSlot(slot?: number): Promise<boolean>;
       deleteSlot(slot?: number): Promise<void>;

@@ -2,9 +2,23 @@
 
 Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open-source**, **MIT-licensed**, **no telemetry**, **no microtransactions**, **no online-only DRM**. Ships as both a browser demo and signed native desktop binaries from the same TypeScript source.
 
-> Status: **v0.6.0 — Week 6: Whitestone hub + zone system + 4-quest spine + Hollow Bishop boss + SaveAdapter.** Player now boots into the Whitestone town hub, talks to the Quest-board NPC, and descends into the procgen catacombs through a doorway tile. Three Act-I quests progress sequentially; Hollow Bishop has 3-phase combat. Save state persists to IndexedDB on web (Tauri FS adapter wired but untested at runtime). See `RELEASE_NOTES_v0.6.md`.
+> Status: **v0.7.0 — Week 7: Furyborn class + Frostvein zone + Worm-Mother Vyl + SaveAdapter v2.** Player is now a Furyborn (Strength / Rage). Three working skills (Cleave, Whirlwind, Charge); three reserved (Battle Roar, Frenzy, Execute). New Frostvein ice-cave biome reachable from Whitestone via the east doorway. Worm-Mother Vyl 3-phase Act-II final boss in the Frostvein boss room. SaveAdapter schema bumped to v2 with the first migration (legacy v1 → Furyborn default). See `RELEASE_NOTES_v0.7.md`.
 
 ![v0.5.0 dungeon spike](docs/v0.5.0-spike.png)
+
+## What's in v0.7.0
+
+- **Class system** (`src/types/class.ts` + `src/systems/class.ts`): `ClassId × ResourceId × ClassStat` discriminated metadata. Class-baselined `ActorStats` (Furyborn: 120 HP, 28 atk, 450 ms cd). `makePlayerActor(classId, tile)` factory wires class + resource on construction
+- **Furyborn (Strength / Rage)**: 6 authored skills in `src/systems/skills.ts`. Cleave (basic / left-click, 0 cost, +12 rage on hit), Whirlwind (25 rage, 1.5 s cd, AoE all 4-adjacent enemies × 0.7 atk), Charge (30 rage, 4 s cd, 5-tile dash along the A* path). Battle Roar / Frenzy / Execute reserved + grayed-out in the bind panel — effects land in v0.7.x
+- **Resource bar HUD** (`src/ui/resource_bar.ts`) above the HP bar; per-class color (Rage = `#c44a2a`). Drain-out-of-combat at 3/s, build on landed hits, capped at class `resourceMax`
+- **Frostvein zone** (`src/levels/frostvein.ts`): BSP procgen with seed `frostvein-1`, deterministic across reloads. Cool-blue `ColorMatrixFilter` color grade — brighter than Catacombs, distinctly icier
+- **Whitestone east doorway** opens to Frostvein; Whitestone south doorway still goes to Catacombs. Two dungeons reachable from the hub
+- **Worm-Mother Vyl** (`WORM_MOTHER_STATS` + `WORM_MOTHER_PHASE_MODS`): 240 HP, 16 atk, 1100 ms cd, monster level 16. 3-phase curve distinct from Hollow Bishop — bulkier baseline, lighter mid-fight ramp (×1.2 / ×0.85), brutal phase-3 cooldown crush (×1.7 / ×0.55). Drops a guaranteed boss-tier item with seed `boss-worm-mother-${killCount}`
+- **Boss-drop guarantee** (`rollDrop({ guaranteed: true })`) — per spec §4.4 Act-final bosses always drop, skipping the chance roll
+- **`q-act2-vyl` quest** chains after `q-act1-bishop` via `activateNextMainAfter`. Sequential main-quest unlock now spans Acts I and II
+- **SaveAdapter v2** — `SAVE_SCHEMA_VERSION = 2`, adds `classId` + `resource` to `SaveState`. First entry in `MIGRATIONS` table: v1 → v2 silently promotes legacy saves to Furyborn / 0 rage
+- **1 new unit test** (1→2 migration), **8 new e2e tests** (`furyborn_frostvein.spec.ts`) covering class boot, resource bar paint, rage gain on hit, Frostvein determinism, Worm-Mother kill, save/load round-trip with class
+- **Tests: 68/68 unit, 86/86 e2e** across Chromium + WebKit
 
 ## What's in v0.6.0
 
@@ -87,26 +101,26 @@ Single-player isometric action-RPG in the Diablo / Path-of-Exile lineage. **Open
 | Tests | [Vitest](https://vitest.dev) + [Playwright](https://playwright.dev) |
 | Pkg mgr | [bun](https://bun.sh) (preferred) — `pnpm` fallback |
 
-## Controls (v0.6.0)
+## Controls (v0.7.0)
 
 | Action | Binding |
 |---|---|
 | Move | Left-click a floor tile — A* routes around walls |
-| Attack enemy | Left-click an enemy — player A*-walks into melee, then auto-attacks |
+| Attack enemy (Cleave) | Left-click an enemy — Furyborn basic strike, +12 rage per landed hit |
 | Walk to loot | Left-click a ground item — player A*-walks there |
 | Pick up loot | Left-click a ground item *while standing on it* — goes into the bag (no auto-equip) |
 | Inspect ground loot | Hover a ground item — tooltip shows name, base stat, affixes, and current-equipped compare |
 | Talk to NPC | Left-click a Whitestone NPC — player A*-walks to an adjacent floor tile, then opens dialog |
-| Change zone | Walk onto a doorway tile (Whitestone south gate ↔ Catacombs entrance) |
+| Change zone | Walk onto a doorway tile (Whitestone south → Catacombs, Whitestone east → Frostvein) |
 | Inventory | `I` toggles the 10×4 bag panel; left-click a cell to equip; right-click to drop on the floor |
 | Character | `C` toggles the paper-doll panel; click an equipped slot to unequip back to the bag |
 | Quests | `Q` toggles the expanded quest panel (compact tracker is always on the right edge) |
 | Save | `S` saves to slot 1 — only allowed in the Whitestone hub (anti-save-scum, spec §8) |
-| Hotbar | Keys 1-4 trigger bound skills (only `melee` exists today); left-click slot opens bind flow; right-click clears |
+| Hotbar | Keys 1-4 trigger bound skills. Furyborn skills available in bind panel: Whirlwind (25 rage), Charge (30 rage); Battle Roar / Frenzy / Execute defined but stubbed |
 | Close panel | `Esc` closes every open panel + the NPC dialog |
 | Quit | Close the window — there's no title screen yet |
 
-Vendor UI, gold, talent grid land in v0.7.0–v0.8.0 per spec §10.
+Vendor UI, gold, talent grid, Bonecaller / Frostmark classes land in v0.8.0–v0.9.0 per spec §10.
 
 ## Build from source
 

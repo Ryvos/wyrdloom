@@ -4,6 +4,8 @@
 import type { TileCoord } from '../engine/iso';
 import type { Equipment } from '../systems/inventory';
 import type { DerivedStats } from '../systems/inventory';
+import type { ClassId } from '../types/class';
+import { getClass } from '../systems/class';
 
 export type ActorKind = 'player' | 'enemy';
 
@@ -29,6 +31,11 @@ export interface Actor {
   lastMoveAt: number;
   goal: TileCoord | null;
   attackTarget: string | null; // id of actor we want to attack on contact
+  // Player-only: class identity + current resource value (rage/mana/etc).
+  // Enemies leave both undefined. resourceMax lives in the class def — saves
+  // serialize only classId + resource and look up max at load time.
+  classId?: ClassId;
+  resource?: number;
 }
 
 export const PLAYER_STATS: ActorStats = {
@@ -62,7 +69,9 @@ export const HOLLOW_BISHOP_STATS: ActorStats = {
 };
 
 // Phase thresholds (HP fraction). Phase 1: 100..67%, Phase 2: 67..33%, Phase 3: 33..0%.
-export const HOLLOW_BISHOP_PHASE_THRESHOLDS = [0.67, 0.33] as const;
+// Both Act-I and Act-II bosses currently share the same gates.
+export const BOSS_PHASE_THRESHOLDS = [0.67, 0.33] as const;
+export const HOLLOW_BISHOP_PHASE_THRESHOLDS = BOSS_PHASE_THRESHOLDS;
 
 // Phase modifier — multiplies atk and shrinks cooldown per phase.
 export interface PhaseMod {
@@ -75,11 +84,30 @@ export const HOLLOW_BISHOP_PHASE_MODS: readonly [PhaseMod, PhaseMod, PhaseMod] =
   { atkMul: 1.8, cooldownMul: 0.65 },  // phase 3 — desperate, dangerous
 ];
 
+// Worm-Mother Vyl — Act II final boss. Per spec §5 (3 phases). Different
+// mechanical curve than the Hollow Bishop: bulkier baseline, lighter mid-
+// fight ramp, brutal phase-3 cooldown crush. Reads as an endurance fight
+// rather than the Bishop's steady scaling.
+export const WORM_MOTHER_STATS: ActorStats = {
+  maxHp: 240,
+  atk: 16,
+  atkRange: 1,
+  atkCooldownMs: 1100,
+  aggroRange: 8,
+  moveCooldownMs: 240,
+};
+
+export const WORM_MOTHER_PHASE_MODS: readonly [PhaseMod, PhaseMod, PhaseMod] = [
+  { atkMul: 1.0, cooldownMul: 1.0 },   // phase 1 — slow, heavy
+  { atkMul: 1.2, cooldownMul: 0.85 },  // phase 2 — mild ramp
+  { atkMul: 1.7, cooldownMul: 0.55 },  // phase 3 — desperation, short cd
+];
+
 export function bossPhase(hp: number, maxHp: number): 1 | 2 | 3 {
   if (maxHp <= 0) return 1;
   const frac = hp / maxHp;
-  if (frac > HOLLOW_BISHOP_PHASE_THRESHOLDS[0]) return 1;
-  if (frac > HOLLOW_BISHOP_PHASE_THRESHOLDS[1]) return 2;
+  if (frac > BOSS_PHASE_THRESHOLDS[0]) return 1;
+  if (frac > BOSS_PHASE_THRESHOLDS[1]) return 2;
   return 3;
 }
 
@@ -99,4 +127,24 @@ export function makeActor(id: string, kind: ActorKind, stats: ActorStats, tile: 
     goal: null,
     attackTarget: null,
   };
+}
+
+// Player factory — pulls baseline stats from the class definition and wires
+// up the resource pool. Save/load uses this on character restore (with
+// optional `resource` override to restore mid-fight rage state).
+export function makePlayerActor(classId: ClassId, tile: TileCoord, resource = 0): Actor {
+  const cls = getClass(classId);
+  if (!cls) throw new Error(`unknown class: ${classId}`);
+  const stats: ActorStats = {
+    maxHp: cls.baseHp,
+    atk: cls.baseAtk,
+    atkRange: 1,
+    atkCooldownMs: cls.baseAtkCooldownMs,
+    aggroRange: 0,
+    moveCooldownMs: cls.baseMoveCooldownMs,
+  };
+  const actor = makeActor('player', 'player', stats, tile);
+  actor.classId = classId;
+  actor.resource = resource;
+  return actor;
 }

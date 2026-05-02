@@ -5,8 +5,9 @@
 import { css, html } from 'lit';
 import { customElement, state } from 'lit/decorators.js';
 import { WyrdPanel, type PanelId, dispatchPanelToggle } from './panel';
-import { SKILLS, type SkillDef } from '../systems/skills';
+import { classSkills, type SkillDef } from '../systems/skills';
 import { setHotbarBinding, pendingBindSlot } from './hotbar';
+import { gameState } from './store';
 
 @customElement('wyrd-bind')
 export class WyrdBind extends WyrdPanel {
@@ -47,6 +48,15 @@ export class WyrdBind extends WyrdPanel {
       .skill-name {
         flex: 1;
       }
+      .skill-cost {
+        font-size: 11px;
+        opacity: 0.7;
+        font-variant-numeric: tabular-nums;
+      }
+      .skill-row.disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
       .empty-note {
         font-size: 12px;
         opacity: 0.55;
@@ -76,6 +86,7 @@ export class WyrdBind extends WyrdPanel {
 
   private _bind(skill: SkillDef): void {
     if (this._slotIndex === null) return;
+    if (!skill.implemented) return;
     setHotbarBinding(this._slotIndex, { skillId: skill.id, label: skill.icon });
     pendingBindSlot.value = null;
     dispatchPanelToggle({ id: 'bind', open: false });
@@ -83,25 +94,30 @@ export class WyrdBind extends WyrdPanel {
 
   protected override renderBody(): unknown {
     const idx = this._slotIndex;
+    // Show the player's class skills, hiding the basic strike (it's left-click).
+    const classId = gameState.classId ?? 'furyborn';
+    const skills = classSkills(classId).filter((s) => s.kind !== 'basic');
     return html`
       <div class="target" data-testid="bind-target">
         ${idx !== null ? `Binding to hotbar slot ${idx + 1}` : 'No slot targeted'}
       </div>
       <div class="skills">
-        ${SKILLS.map(
+        ${skills.map(
           (s) => html`
             <div
-              class="skill-row"
+              class="skill-row ${s.implemented ? '' : 'disabled'}"
               data-testid="bind-skill-${s.id}"
               @click=${(): void => this._bind(s)}
+              title=${s.summary}
             >
               <div class="skill-icon">${s.icon}</div>
               <div class="skill-name">${s.name}</div>
+              <div class="skill-cost">${s.cost > 0 ? `${s.cost} rage` : 'free'}</div>
             </div>
           `,
         )}
       </div>
-      <div class="empty-note">More skills land in v0.5.0 (spec §10).</div>
+      <div class="empty-note">Bonecaller / Frostmark / Sealwarden skills land in v0.8.0+.</div>
     `;
   }
 }

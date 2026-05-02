@@ -1,10 +1,11 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const TARGET_VERSION = '0.6.0';
+const TARGET_VERSION = '0.7.0';
 
-// In v0.6.0 the player boots in the Whitestone hub. Catacombs is reached by
+// v0.6.0+: player boots in the Whitestone hub. Catacombs is reached by
 // stepping onto the south doorway, or via dev.changeZone() in tests.
+// v0.7.0+: default class is Furyborn — baseHp 120, baseAtk 28.
 const HUB_SPAWN = { tx: 8, ty: 8 };
 const CATACOMBS_ENTRANCE = { tx: 8, ty: 4 };
 const CATACOMBS_BOSS = { tx: 28, ty: 26 };
@@ -41,7 +42,7 @@ test.describe('boot + procgen', () => {
     }));
     expect(state.zoneId).toBe('whitestone');
     expect(state.tile).toEqual(HUB_SPAWN);
-    expect(state.hp).toBe(100);
+    expect(state.hp).toBe(120); // Furyborn baseline
     expect(state.alive).toBe(true);
   });
 
@@ -189,7 +190,7 @@ test.describe('combat (uses teleport for setup)', () => {
       hp: window.__wyrdloom.playerHp,
       alive: window.__wyrdloom.playerAlive,
     }));
-    expect(state).toEqual({ tile: CATACOMBS_ENTRANCE, hp: 100, alive: true });
+    expect(state).toEqual({ tile: CATACOMBS_ENTRANCE, hp: 120, alive: true });
   });
 
   test('hp readout reflects damage taken', async ({ page }) => {
@@ -198,6 +199,6 @@ test.describe('combat (uses teleport for setup)', () => {
 
     await page.evaluate(() => window.__wyrdloom.dev.setPlayerHp(73));
     const text = await page.locator('[data-testid="hp-readout"]').textContent();
-    expect(text).toBe('HP 73 / 100');
+    expect(text).toBe('HP 73 / 120');
   });
 });

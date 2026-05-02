@@ -39,6 +39,16 @@
       "act": 1,
       "main": true,
       "order": 3
+    },
+    {
+      "id": "q-act2-vyl",
+      "title": "Worm-Mother Vyl",
+      "summary": "Descend the Frostvein caves and slay Vyl, mother of the ice-worms. Her death ends the corruption that drives them surface-ward.",
+      "objective": { "kind": "boss_kill", "bossId": "worm-mother", "count": 1 },
+      "reward": "Unique-tier ice-shard (Act III key)",
+      "act": 2,
+      "main": true,
+      "order": 4
     }
   ]
 }

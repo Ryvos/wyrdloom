@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 // Same offline-probed seed as the loot tests — Honed Iron Sword of Malice.
 const WEAPON_SEED = 'weapon-seed-17';
 
@@ -59,7 +59,7 @@ test.describe('inventory + character panels (v0.4.0)', () => {
     await page.evaluate((s) => window.__wyrdloom.dev.giveItem(s), WEAPON_SEED);
     await page.evaluate(() => window.__wyrdloom.dev.openPanel('inventory'));
 
-    expect(await page.evaluate(() => window.__wyrdloom.playerAtk)).toBe(25);
+    expect(await page.evaluate(() => window.__wyrdloom.playerAtk)).toBe(28);
 
     await page.locator('wyrd-inventory').locator('[data-testid="inv-cell-0-0"]').click();
 
@@ -74,9 +74,9 @@ test.describe('inventory + character panels (v0.4.0)', () => {
       slot: 'weapon',
       name: 'Honed Iron Sword of Malice',
     });
-    // Honed Iron Sword of Malice → 25 + 10 + Honed(5..10) + Malice(1..4) = 41..49
-    expect(after.atk).toBeGreaterThanOrEqual(41);
-    expect(after.atk).toBeLessThanOrEqual(49);
+    // Honed Iron Sword of Malice → 28 + 10 + Honed(5..10) + Malice(1..4) = 44..52
+    expect(after.atk).toBeGreaterThanOrEqual(44);
+    expect(after.atk).toBeLessThanOrEqual(52);
   });
 
   test('character sheet shows equipped weapon; click unequips back to bag', async ({ page }) => {
@@ -105,7 +105,7 @@ test.describe('inventory + character panels (v0.4.0)', () => {
     }));
     expect(after.equipped).toHaveLength(0);
     expect(after.bag).toHaveLength(1);
-    expect(after.atk).toBe(25);
+    expect(after.atk).toBe(28);
   });
 
   test('right-click an inventory cell drops the item to the floor', async ({ page }) => {
@@ -150,12 +150,12 @@ test.describe('hotbar + bind flow (v0.4.0)', () => {
     await page.waitForFunction((v) => window.__wyrdloom?.version === v, VERSION);
 
     await page.locator('wyrd-hotbar').locator('[data-testid="hotbar-2"]').click();
-    await page.locator('wyrd-bind').locator('[data-testid="bind-skill-melee"]').click();
+    await page.locator('wyrd-bind').locator('[data-testid="bind-skill-fb-whirlwind"]').click();
 
     const hb = await page.evaluate(() => window.__wyrdloom.hotbar);
     expect(hb[0]).toBeNull();
     expect(hb[1]).toBeNull();
-    expect(hb[2]).toMatchObject({ skillId: 'melee' });
+    expect(hb[2]).toMatchObject({ skillId: 'fb-whirlwind' });
     expect(hb[3]).toBeNull();
   });
 
@@ -165,7 +165,7 @@ test.describe('hotbar + bind flow (v0.4.0)', () => {
 
     // Bind first.
     await page.locator('wyrd-hotbar').locator('[data-testid="hotbar-0"]').click();
-    await page.locator('wyrd-bind').locator('[data-testid="bind-skill-melee"]').click();
+    await page.locator('wyrd-bind').locator('[data-testid="bind-skill-fb-whirlwind"]').click();
     expect(await page.evaluate(() => window.__wyrdloom.hotbar[0])).not.toBeNull();
 
     // Right-click to unbind.

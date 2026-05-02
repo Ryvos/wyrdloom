@@ -1,19 +1,25 @@
-// WYRDLOOM v0.6.0 — Week 6: Whitestone hub + quests + Hollow Bishop + saves.
-// New in v0.6.0: zone system (hub ↔ catacombs), Quest-board NPC + quest
-// tracker, Hollow Bishop boss with 3-phase combat, SaveAdapter (web +
-// Tauri).
+// WYRDLOOM v0.7.0 — Week 7: Furyborn class + Frostvein zone + Worm-Mother.
+// New in v0.7.0: class system with Rage resource, 6-skill Furyborn kit
+// (3 working, 3 stubbed), Frostvein ice-cave biome reachable from
+// Whitestone, Worm-Mother Vyl boss with 3 phases (different mechanic than
+// Hollow Bishop), SaveAdapter v2 with first schema migration.
 
 import { Application, Container, Graphics, ColorMatrixFilter, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
 import type { TileCoord } from './engine/iso';
 import {
   makeActor,
-  PLAYER_STATS,
+  makePlayerActor,
   ENEMY_STATS,
   HOLLOW_BISHOP_STATS,
   HOLLOW_BISHOP_PHASE_MODS,
+  WORM_MOTHER_STATS,
+  WORM_MOTHER_PHASE_MODS,
   bossPhase,
+  type ActorStats,
+  type PhaseMod,
 } from './actors/Actor';
+import { DEFAULT_CLASS_ID } from './systems/class';
 import type { Actor } from './actors/Actor';
 import type { NpcDef } from './actors/Npc';
 import { canAttack, performAttack, distanceBetween, respawn } from './systems/combat';
@@ -21,11 +27,21 @@ import { tickEnemy } from './systems/ai';
 import { isFloor, roomCenter, type DungeonMap } from './systems/procgen';
 import { findPath, type PathfindGrid, type PathTile } from './systems/pathfinding';
 import { drawDungeon } from './fx/tiles';
-import { makePlayerSprite, makeEnemySprite, makeHollowBishopSprite, makeHitFlash } from './fx/sprites';
+import {
+  makePlayerSprite,
+  makeEnemySprite,
+  makeHollowBishopSprite,
+  makeWormMotherSprite,
+  makeHitFlash,
+} from './fx/sprites';
 import { makeNpcSprite } from './fx/npc_sprite';
 import { spawnDamagePopup } from './fx/damage_popup';
 import { mountHpBar } from './ui/hp_bar';
 import type { HpBar } from './ui/hp_bar';
+import { mountResourceBar } from './ui/resource_bar';
+import type { ResourceBar } from './ui/resource_bar';
+import { getClass } from './systems/class';
+import { getSkill } from './systems/skills';
 import { rollDrop } from './systems/loot';
 import { computeDerivedStats, equip, unequip } from './systems/inventory';
 import {
@@ -60,6 +76,7 @@ import {
 } from './systems/zone';
 import { makeWhitestoneZone, WHITESTONE_NPCS } from './levels/whitestone';
 import { makeCatacombsZone } from './levels/catacombs';
+import { makeFrostveinZone } from './levels/frostvein';
 import {
   makeQuestState,
   onEnemyKilled,
@@ -80,12 +97,19 @@ import './ui/bind_panel';
 import './ui/quest_tracker';
 import './ui/npc_dialog';
 
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.7.0';
 const DEFAULT_CATACOMBS_SEED = 'catacombs-1';
+const DEFAULT_FROSTVEIN_SEED = 'frostvein-1';
 const DEFAULT_CHARACTER_NAME = 'Wyrdling';
 const RESPAWN_PLAYER_DELAY_MS = 2000;
 const RESPAWN_ENEMY_DELAY_MS = 3000;
 const HOLLOW_BISHOP_ID = 'hollow-bishop';
+const WORM_MOTHER_ID = 'worm-mother';
+type BossId = typeof HOLLOW_BISHOP_ID | typeof WORM_MOTHER_ID;
+
+function isBossId(id: string): id is BossId {
+  return id === HOLLOW_BISHOP_ID || id === WORM_MOTHER_ID;
+}
 
 interface ActorView {
   readonly actor: Actor;
@@ -105,6 +129,13 @@ interface World {
   readonly world: Container;
   readonly target: Graphics;
   readonly hpBar: HpBar;
+  readonly resourceBar: ResourceBar;
+  // Per-skill cooldown tracker. Keyed by skillId; value is the ms timestamp
+  // at which the skill last fired. Cleave (the basic attack) doesn't enter
+  // this map — it shares the actor.lastAttackAt cooldown.
+  readonly skillCdAt: Map<string, number>;
+  // ms timestamp of the last frame; resource drift integrates over the delta.
+  lastTickMs: number;
   readonly tooltip: Tooltip;
   readonly player: ActorView;
   readonly inventory: Inventory;
@@ -136,6 +167,7 @@ interface World {
   // Hollow Bishop tracking — its current phase + last applied phase, so we
   // can re-apply the phase mod when HP crosses a threshold.
   hollowBishopPhase: 1 | 2 | 3;
+  wormMotherPhase: 1 | 2 | 3;
 }
 
 async function main(): Promise<void> {
@@ -183,11 +215,15 @@ async function main(): Promise<void> {
     isWalkable: (tx, ty): boolean => isFloor(W.dungeon, tx, ty),
   };
 
-  const playerActor = makeActor('player', 'player', PLAYER_STATS, initialZone.playerEntry);
+  const playerActor = makePlayerActor(DEFAULT_CLASS_ID, initialZone.playerEntry);
   const playerView = mountActorView(world, playerActor, makePlayerSprite());
 
   const hpBar = mountHpBar(hud);
   hpBar.set(playerActor.hp, playerActor.derivedStats.maxHp);
+
+  const resourceBar = mountResourceBar(hud);
+  const cls = getClass(DEFAULT_CLASS_ID)!;
+  resourceBar.set(playerActor.resource ?? 0, cls.resourceMax, cls.resourceColor, capitalize(cls.resource));
 
   const tooltip = mountTooltip(hud);
 
@@ -199,6 +235,9 @@ async function main(): Promise<void> {
     world,
     target,
     hpBar,
+    resourceBar,
+    skillCdAt: new Map<string, number>(),
+    lastTickMs: 0,
     tooltip,
     player: playerView,
     enemies: [],
@@ -222,6 +261,7 @@ async function main(): Promise<void> {
     characterName: DEFAULT_CHARACTER_NAME,
     saveCreatedAt: Date.now(),
     hollowBishopPhase: 1,
+    wormMotherPhase: 1,
   };
 
   // Initial zone setup — spawn NPCs (Whitestone) or enemies (Catacombs).
@@ -339,6 +379,19 @@ async function main(): Promise<void> {
     },
     get hollowBishopPhase(): number {
       return W.hollowBishopPhase;
+    },
+    get wormMotherPhase(): number {
+      return W.wormMotherPhase;
+    },
+    get classId(): string | null {
+      return W.player.actor.classId ?? null;
+    },
+    get resource(): number {
+      return W.player.actor.resource ?? 0;
+    },
+    get resourceMax(): number {
+      const c = W.player.actor.classId ? getClass(W.player.actor.classId) : undefined;
+      return c?.resourceMax ?? 0;
     },
     version: APP_VERSION,
     dev: {
@@ -463,6 +516,121 @@ async function main(): Promise<void> {
   };
 }
 
+// "rage" → "Rage". Used for the resource bar label.
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Add resourceOnHit (capped at resourceMax) to the player's resource pool.
+// Called from the basic-attack code path after a successful hit lands. Skill
+// activations don't gain resource — only the Cleave-style basic attack does.
+function gainResourceOnHit(player: Actor): void {
+  if (!player.classId || player.resource === undefined) return;
+  const cls = getClass(player.classId);
+  if (!cls) return;
+  player.resource = Math.min(cls.resourceMax, player.resource + cls.resourceOnHit);
+}
+
+// Apply per-second resource drift. dtMs is wall-clock since last tick.
+// Furyborn drains rage out of combat; Frostmark mana would regen here.
+function tickResourceDrift(player: Actor, dtMs: number): void {
+  if (!player.classId || player.resource === undefined) return;
+  const cls = getClass(player.classId);
+  if (!cls || cls.resourceRegen === 0) return;
+  const next = player.resource + (cls.resourceRegen * dtMs) / 1000;
+  player.resource = Math.max(0, Math.min(cls.resourceMax, next));
+}
+
+// Execute a hotbar-bound skill. Returns true if the skill fired (consumed
+// resource + cooldown). Cleave is excluded — it's the implicit left-click
+// strike, not a hotbar action.
+function executeSkill(W: World, skillId: string, nowMs: number): boolean {
+  const player = W.player.actor;
+  const skill = getSkill(skillId);
+  if (!skill || !skill.implemented || skill.kind === 'basic') return false;
+  if (!player.classId || player.resource === undefined) return false;
+  const cls = getClass(player.classId);
+  if (!cls) return false;
+  // Cooldown gate.
+  const lastAt = W.skillCdAt.get(skillId) ?? Number.NEGATIVE_INFINITY;
+  if (nowMs - lastAt < skill.cooldownMs) return false;
+  // Resource gate.
+  if (player.resource < skill.cost) return false;
+
+  if (skill.kind === 'aoe') {
+    // Whirlwind: hit every alive enemy within 1 tile.
+    const damage = Math.floor(player.derivedStats.atk * skill.damageMul);
+    for (const view of W.enemies) {
+      if (!view.actor.alive) continue;
+      if (distanceBetween(player, view.actor) > 1) continue;
+      view.actor.hp = Math.max(0, view.actor.hp - damage);
+      flashHit(view, nowMs);
+      const screen = tileToScreen(view.actor.tile.tx, view.actor.tile.ty);
+      const killed = view.actor.hp === 0 && view.actor.alive;
+      spawnDamagePopup(W.world, screen.sx, screen.sy, damage, killed, W.app.ticker);
+      if (killed) {
+        view.actor.alive = false;
+        view.actor.attackTarget = null;
+        view.actor.goal = null;
+        view.node.visible = false;
+        handleKill(W, view, nowMs);
+      } else if (isBossId(view.actor.id)) {
+        maybeAdvanceBossPhase(W, view);
+      }
+    }
+  } else if (skill.kind === 'mobility') {
+    // Charge: teleport along the path toward the player goal up to 5 tiles.
+    // Reuses the existing A* path so we never warp through walls.
+    const path = W.playerPath;
+    if (!path || path.length === 0) return false;
+    const ix = W.playerPathIx;
+    const lastIx = Math.min(path.length - 1, ix + 5);
+    const dest = path[lastIx];
+    if (!dest) return false;
+    player.tile = { tx: dest.tx, ty: dest.ty };
+    placeActorNode(W.player.node, player);
+    centerCamera(W.app, W.camera, player.tile);
+    W.playerPathIx = lastIx;
+  }
+
+  // Spend resource + record cooldown.
+  player.resource = Math.max(0, player.resource - skill.cost);
+  W.skillCdAt.set(skillId, nowMs);
+  return true;
+}
+
+// Centralized kill handler — pulled out so both basic-attack and Whirlwind
+// AoE go through the same drop / quest / respawn pipeline. Worm-Mother and
+// Hollow Bishop both flow through here.
+function handleKill(W: World, view: ActorView, nowMs: number): void {
+  const id = view.actor.id;
+  const isBoss = isBossId(id);
+  W.killCount += 1;
+  const dropSeed = isBoss
+    ? `boss-${id}-${W.killCount}`
+    : `${id}-${W.killCount}-${Math.floor(nowMs)}`;
+  // Worm-Mother sits at monster level 16 (Act II final) vs 12 for Bishop.
+  const monsterLevel = isBoss ? (id === WORM_MOTHER_ID ? 16 : 12) : 5;
+  const item = rollDrop({ monsterLevel, seed: dropSeed, guaranteed: isBoss });
+  if (item) {
+    const dropTile = { ...view.actor.tile };
+    const groundView = spawnGroundItem(W.world, W.app.ticker, item, dropTile);
+    W.groundItems.push(groundView);
+  }
+  if (isBoss) {
+    const done = onBossKilled(W.quests, id);
+    for (const cid of done) activateNextMainAfter(W.quests, cid);
+    void autoSave(W).catch((err) => console.error('autoSave failed:', err));
+  } else {
+    const done = onEnemyKilled(W.quests, W.currentZone.id);
+    for (const cid of done) activateNextMainAfter(W.quests, cid);
+  }
+  syncStore(W);
+  if (!isBoss) {
+    W.enemyRespawnQueue.push({ id, spawnAt: nowMs + RESPAWN_ENEMY_DELAY_MS });
+  }
+}
+
 function mountActorView(world: Container, actor: Actor, sprite: Container): ActorView {
   const node = new Container();
   node.label = `actor:${actor.id}`;
@@ -501,6 +669,13 @@ function applyZoneFilter(world: Container, zoneId: ZoneId): void {
       f.tint(0x9aa6c0, true);
       f.brightness(0.85, true);
       break;
+    case 'frostvein':
+      // Bright cold ice — slightly desaturated and tinted blue, a touch
+      // brighter than the catacombs (open-cave feel vs claustrophobic crypt).
+      f.saturate(-0.15, false);
+      f.tint(0xb8d8f0, true);
+      f.brightness(1.05, true);
+      break;
   }
   world.filters = [f];
 }
@@ -518,11 +693,13 @@ function clearZone(W: World): void {
   W.groundItems = [];
   W.enemyRespawnQueue = [];
   W.hollowBishopPhase = 1;
+  W.wormMotherPhase = 1;
 }
 
 // Spawn the actors a zone owns at boot or after a transition.
 // - Whitestone: NPCs only (Quest-board for v0.6.0).
 // - Catacombs: 1 grunt + Hollow Bishop in the boss room.
+// - Frostvein: 1 grunt + Worm-Mother Vyl in the boss room.
 function spawnZoneActors(W: World, _fromZone: ZoneId | null): void {
   W.npcs = [];
   W.enemies = [];
@@ -535,8 +712,6 @@ function spawnZoneActors(W: World, _fromZone: ZoneId | null): void {
   }
 
   if (W.currentZone.id === 'catacombs') {
-    // Wandering grunt — placed near the entrance so the player meets one
-    // before reaching the boss room.
     const map = W.currentZone.map;
     const grunt = makeActor('grunt-1', 'enemy', ENEMY_STATS, {
       tx: map.entrance.x + map.entrance.w - 1,
@@ -544,12 +719,25 @@ function spawnZoneActors(W: World, _fromZone: ZoneId | null): void {
     });
     W.enemies.push(mountActorView(W.world, grunt, makeEnemySprite()));
 
-    // Hollow Bishop — bosses spawn at the boss-room centre with a fresh
-    // phase-1 atk profile.
     const bossTile = roomCenter(map.boss);
     const bishop = makeActor(HOLLOW_BISHOP_ID, 'enemy', HOLLOW_BISHOP_STATS, bossTile);
     W.enemies.push(mountActorView(W.world, bishop, makeHollowBishopSprite()));
     W.hollowBishopPhase = 1;
+    return;
+  }
+
+  if (W.currentZone.id === 'frostvein') {
+    const map = W.currentZone.map;
+    const grunt = makeActor('grunt-fv-1', 'enemy', ENEMY_STATS, {
+      tx: map.entrance.x + map.entrance.w - 1,
+      ty: map.entrance.y + map.entrance.h - 1,
+    });
+    W.enemies.push(mountActorView(W.world, grunt, makeEnemySprite()));
+
+    const bossTile = roomCenter(map.boss);
+    const vyl = makeActor(WORM_MOTHER_ID, 'enemy', WORM_MOTHER_STATS, bossTile);
+    W.enemies.push(mountActorView(W.world, vyl, makeWormMotherSprite()));
+    W.wormMotherPhase = 1;
   }
 }
 
@@ -558,6 +746,7 @@ function loadZone(W: World, target: ZoneId, from: ZoneId | null): void {
   // Build the new zone first so any failure leaves the old one intact.
   let zone: Zone;
   if (target === 'whitestone') zone = makeWhitestoneZone();
+  else if (target === 'frostvein') zone = makeFrostveinZone(DEFAULT_FROSTVEIN_SEED);
   else zone = makeCatacombsZone(DEFAULT_CATACOMBS_SEED);
 
   // Tear down old visuals and actors.
@@ -736,26 +925,46 @@ function bindHoverHandler(W: World): void {
   });
 }
 
-// Hollow Bishop phase advancement. Re-applies the phase-mod to base stats so
-// atk + cooldown shift visibly between phases.
+// Boss config — id-keyed registry mapping each boss to its base stats, phase
+// mods, and World-side phase counter field. Adding a new boss is a one-row
+// extension.
+const BOSS_CONFIG: Record<BossId, {
+  baseStats: ActorStats;
+  mods: readonly [PhaseMod, PhaseMod, PhaseMod];
+  phaseField: 'hollowBishopPhase' | 'wormMotherPhase';
+}> = {
+  [HOLLOW_BISHOP_ID]: {
+    baseStats: HOLLOW_BISHOP_STATS,
+    mods: HOLLOW_BISHOP_PHASE_MODS,
+    phaseField: 'hollowBishopPhase',
+  },
+  [WORM_MOTHER_ID]: {
+    baseStats: WORM_MOTHER_STATS,
+    mods: WORM_MOTHER_PHASE_MODS,
+    phaseField: 'wormMotherPhase',
+  },
+};
+
+// Boss phase advancement. Re-applies the per-boss phase-mod to base stats so
+// atk + cooldown shift visibly between phases. Generalized over both Act-I
+// and Act-II final bosses; the registry above picks the right curve.
 function maybeAdvanceBossPhase(W: World, view: ActorView): void {
+  const id = view.actor.id;
+  if (!isBossId(id)) return;
+  const cfg = BOSS_CONFIG[id];
   const next = bossPhase(view.actor.hp, view.actor.stats.maxHp);
-  if (next === W.hollowBishopPhase) return;
-  W.hollowBishopPhase = next;
-  const mod = HOLLOW_BISHOP_PHASE_MODS[next - 1]!;
-  // Mutate derivedStats — the source-of-truth for combat reads. The actor's
-  // base `stats` is immutable so we layer the mod onto derivedStats only.
+  if (next === W[cfg.phaseField]) return;
+  W[cfg.phaseField] = next;
+  const mod = cfg.mods[next - 1]!;
   view.actor.derivedStats = {
     atk: Math.round(view.actor.stats.atk * mod.atkMul),
     maxHp: view.actor.stats.maxHp,
     armor: view.actor.derivedStats.armor,
   };
-  // Cooldown is read off `stats.atkCooldownMs`; we need to override that too.
-  // Cheapest path: replace `stats` entirely (it's marked readonly but we own
-  // the actor lifetime here and the discriminator on the cast is intentional).
-  (view.actor as { stats: typeof view.actor.stats }).stats = {
+  // Cooldown lives on the readonly `stats` blob — replace the whole object.
+  (view.actor as { stats: ActorStats }).stats = {
     ...view.actor.stats,
-    atkCooldownMs: Math.round(HOLLOW_BISHOP_STATS.atkCooldownMs * mod.cooldownMul),
+    atkCooldownMs: Math.round(cfg.baseStats.atkCooldownMs * mod.cooldownMul),
   };
 }
 
@@ -850,6 +1059,15 @@ function syncStore(W: World): void {
   gameState.baseMaxHp = player.stats.maxHp;
   gameState.quests = W.quests;
   gameState.zoneId = W.currentZone.id;
+  gameState.classId = player.classId ?? null;
+  gameState.resource = player.resource ?? 0;
+  const cls = player.classId ? getClass(player.classId) : undefined;
+  gameState.resourceMax = cls?.resourceMax ?? 0;
+  // Push the resource bar render here too so panels and the bar stay aligned
+  // without a second event hop.
+  if (cls && player.resource !== undefined) {
+    W.resourceBar.set(player.resource, cls.resourceMax, cls.resourceColor, capitalize(cls.resource));
+  }
   notifyState();
 }
 
@@ -874,6 +1092,8 @@ function snapshotSaveState(W: World): SaveState {
     playerHp: W.player.actor.hp,
     playerStatsAtk: W.player.actor.stats.atk,
     playerStatsMaxHp: W.player.actor.stats.maxHp,
+    classId: W.player.actor.classId ?? DEFAULT_CLASS_ID,
+    resource: W.player.actor.resource ?? 0,
     inventory: W.inventory,
     equipment: W.player.actor.equipment,
     hotbar: gameState.hotbar.map((b) => (b ? { skillId: b.skillId, label: b.label } : null)),
@@ -898,8 +1118,12 @@ async function loadSaveAndApply(W: World, slot: SlotIndex = 1): Promise<boolean>
   const file = await W.saveAdapter.load(slot);
   if (!file) return false;
   const s = file.state;
-  // Restore zone first — that resets player position to entry. Then we
-  // overwrite their HP / inventory / equipment from the save.
+  // Restore class first so the resource bar paints the right color before the
+  // zone loader fires syncStore.
+  W.player.actor.classId = s.classId;
+  W.player.actor.resource = s.resource;
+  // Restore zone — resets position to the zone's entry tile, then we overwrite
+  // hp/inv/equip from the save.
   loadZone(W, s.zoneId, null);
   W.player.actor.hp = s.playerHp;
   W.inventory.slots = s.inventory.slots;
@@ -932,11 +1156,13 @@ function bindIntentHandlers(W: World): void {
     const detail = (e as CustomEvent<DropIntent>).detail;
     if (detail) dropFromInventory(W, detail.uid);
   });
-  // Hotbar trigger — for v0.4.0 the only skill is `melee`, which is already
-  // wired to click-to-attack. Keep this pure observation; v0.5.0 adds real
-  // skill execution.
-  window.addEventListener(SKILL_TRIGGER_EVENT, () => {
-    /* no-op until v0.5.0 */
+  // Hotbar trigger — v0.7.0 wires the Furyborn kit. Cleave is implicit
+  // (left-click), other skills fire here from key 1-4 or hotbar click.
+  window.addEventListener(SKILL_TRIGGER_EVENT, (e: Event) => {
+    const detail = (e as CustomEvent<{ slot: number; skillId: string }>).detail;
+    if (!detail) return;
+    const fired = executeSkill(W, detail.skillId, performance.now());
+    if (fired) syncStore(W);
   });
 }
 
@@ -982,6 +1208,20 @@ function bindKeyboard(W: World): void {
 }
 
 function onTick(W: World, nowMs: number): void {
+  // Resource drift — first tick has no delta, just record the timestamp.
+  if (W.lastTickMs > 0) {
+    const dt = nowMs - W.lastTickMs;
+    if (dt > 0) {
+      const before = W.player.actor.resource ?? 0;
+      tickResourceDrift(W.player.actor, dt);
+      // Only push the bar update when the value actually changed (rounding).
+      if (Math.floor(before) !== Math.floor(W.player.actor.resource ?? 0)) {
+        syncStore(W);
+      }
+    }
+  }
+  W.lastTickMs = nowMs;
+
   // Player respawn timer.
   if (!W.player.actor.alive && W.playerDeadAt > 0 && nowMs - W.playerDeadAt >= RESPAWN_PLAYER_DELAY_MS) {
     const spawn = roomCenter(W.dungeon.entrance);
@@ -1055,50 +1295,20 @@ function tickPlayer(W: World, nowMs: number): void {
         flashHit(targetView, nowMs);
         const screen = tileToScreen(targetView.actor.tile.tx, targetView.actor.tile.ty);
         spawnDamagePopup(W.world, screen.sx, screen.sy, ev.amount, ev.killed, W.app.ticker);
+        // Cleave: every landed hit feeds rage. Skill activations skip this.
+        gainResourceOnHit(player);
         if (ev.killed) {
-          targetView.node.visible = false;
           player.attackTarget = null;
           player.goal = null;
           W.playerPath = null;
           W.target.visible = false;
-          const isBoss = targetView.actor.id === HOLLOW_BISHOP_ID;
-          // Roll a drop. Boss is guaranteed to drop a high-tier item using a
-          // boss-pinned seed; grunts use the random seed they had pre-v0.6.0.
-          W.killCount += 1;
-          const dropSeed = isBoss
-            ? `boss-${HOLLOW_BISHOP_ID}-${W.killCount}`
-            : `${targetView.actor.id}-${W.killCount}-${Math.floor(nowMs)}`;
-          const item = rollDrop({
-            monsterLevel: isBoss ? 12 : 5,
-            seed: dropSeed,
-          });
-          if (item) {
-            const dropTile = { ...targetView.actor.tile };
-            const groundView = spawnGroundItem(W.world, W.app.ticker, item, dropTile);
-            W.groundItems.push(groundView);
-          }
-          // Quest events.
-          if (isBoss) {
-            const done = onBossKilled(W.quests, HOLLOW_BISHOP_ID);
-            for (const id of done) activateNextMainAfter(W.quests, id);
-            void autoSave(W).catch((err) => console.error('autoSave failed:', err));
-          } else {
-            const done = onEnemyKilled(W.quests, W.currentZone.id);
-            for (const id of done) activateNextMainAfter(W.quests, id);
-          }
-          syncStore(W);
-          // Bosses don't respawn; grunts do.
-          if (!isBoss) {
-            W.enemyRespawnQueue.push({
-              id: targetView.actor.id,
-              spawnAt: nowMs + RESPAWN_ENEMY_DELAY_MS,
-            });
-          }
+          handleKill(W, targetView, nowMs);
         } else {
           // If this attack just dropped the Hollow Bishop into a new phase,
           // re-stat it. The phase mod scales atk + cooldown; stats stays
           // as-is so derivedStats-style recompute would zero it.
-          if (targetView.actor.id === HOLLOW_BISHOP_ID) maybeAdvanceBossPhase(W, targetView);
+          if (isBossId(targetView.actor.id)) maybeAdvanceBossPhase(W, targetView);
+          syncStore(W); // refresh resource bar after rage gain
         }
       }
       return; // adjacent — don't try to move into the enemy

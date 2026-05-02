@@ -46,13 +46,16 @@ const AFFIX_COUNT_BY_RARITY: Record<Rarity, { prefix: [number, number]; suffix: 
 export interface DropContext {
   readonly monsterLevel: number;
   readonly seed: string;
+  // Per spec §4.4: Act-final bosses always drop. Set to true for the Hollow
+  // Bishop / Worm-Mother / Pact-Bearer kills; the chance roll is skipped.
+  readonly guaranteed?: boolean;
 }
 
 // Returns null if no drop. Otherwise an Item instance with composed name + rolled affixes.
 export function rollDrop(ctx: DropContext): Item | null {
   const rng = makeRng(ctx.seed);
 
-  if (rng.next() > DROP_CHANCE) return null;
+  if (!ctx.guaranteed && rng.next() > DROP_CHANCE) return null;
 
   const rarity = weightedPick(rng, RARITY_WEIGHTS);
   const base = pickBase(rng, ctx.monsterLevel);

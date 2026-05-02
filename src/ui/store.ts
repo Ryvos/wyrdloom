@@ -8,6 +8,7 @@ import type { Equipment, DerivedStats } from '../systems/inventory';
 import type { Inventory } from '../systems/bag';
 import type { QuestState } from '../systems/quests';
 import type { ZoneId } from '../systems/zone';
+import type { ClassId } from '../types/class';
 
 export const STATE_CHANGED_EVENT = 'wyrdloom:state-changed';
 
@@ -20,6 +21,9 @@ export interface GameState {
   hotbar: ReadonlyArray<HotbarBinding | null>;
   quests: QuestState | null;
   zoneId: ZoneId | null;
+  classId: ClassId | null;
+  resource: number;       // current resource value
+  resourceMax: number;    // class-defined max
 }
 
 export interface HotbarBinding {
@@ -36,6 +40,9 @@ export const gameState: GameState = {
   hotbar: [null, null, null, null],
   quests: null,
   zoneId: null,
+  classId: null,
+  resource: 0,
+  resourceMax: 0,
 };
 
 export function notifyState(): void {

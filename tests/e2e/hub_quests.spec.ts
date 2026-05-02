@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect, type Page } from '@playwright/test';
 
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 
 async function bootHub(page: Page): Promise<void> {
   await page.goto('/');

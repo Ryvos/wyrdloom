@@ -18,9 +18,11 @@ import { makeQuestState } from '../../src/systems/quests';
 
 function fakeState(): SaveState {
   return {
-    playerHp: 100,
-    playerStatsAtk: 25,
-    playerStatsMaxHp: 100,
+    playerHp: 120,
+    playerStatsAtk: 28,
+    playerStatsMaxHp: 120,
+    classId: 'furyborn',
+    resource: 0,
     inventory: makeInventory(),
     equipment: {},
     hotbar: [null, null, null, null],
@@ -32,8 +34,8 @@ function fakeState(): SaveState {
 }
 
 describe('SaveAdapter', () => {
-  it('schema version is 1 in v0.6.0', () => {
-    expect(SAVE_SCHEMA_VERSION).toBe(1);
+  it('schema version is 2 in v0.7.0', () => {
+    expect(SAVE_SCHEMA_VERSION).toBe(2);
   });
 
   it('5 character slots, 1-indexed', () => {
@@ -70,8 +72,8 @@ describe('SaveAdapter', () => {
   });
 
   it('migrate() throws when no migrator exists for an older schema', () => {
-    // SAVE_SCHEMA_VERSION === 1 right now → schemaVersion 0 needs a 0→1
-    // migrator. None exists, so the loader should fail-fast with a clear msg.
+    // SAVE_SCHEMA_VERSION === 2 right now and MIGRATIONS only covers 1→2.
+    // schemaVersion 0 has no 0→1 migrator → fail-fast.
     const file: SaveFile = {
       schemaVersion: 0,
       createdAt: 0,
@@ -83,8 +85,41 @@ describe('SaveAdapter', () => {
     expect(() => migrate(file)).toThrow(/migrator from schema 0/);
   });
 
-  it('MIGRATIONS table starts empty in v0.6.0', () => {
-    expect(Object.keys(MIGRATIONS)).toEqual([]);
+  it('MIGRATIONS table contains the 1→2 entry in v0.7.0', () => {
+    expect(Object.keys(MIGRATIONS)).toEqual(['1']);
+  });
+
+  it('migrate() upgrades a v1 save to v2 with Furyborn defaults', () => {
+    // v0.6.0-shaped save (no classId, no resource).
+    const v1State = {
+      playerHp: 100,
+      playerStatsAtk: 25,
+      playerStatsMaxHp: 100,
+      inventory: makeInventory(),
+      equipment: {},
+      hotbar: [null, null, null, null],
+      zoneId: 'whitestone',
+      catacombsSeed: 'catacombs-1',
+      killCount: 0,
+      quests: makeQuestState(),
+    };
+    const file: SaveFile = {
+      schemaVersion: 1,
+      createdAt: 0,
+      updatedAt: 0,
+      characterName: 'Legacy',
+      version: '0.6.0',
+      // The migrator treats `state` opaquely; we cast just to satisfy the
+      // SaveFile type, which expects the v2 shape.
+      state: v1State as unknown as SaveState,
+    };
+    const migrated = migrate(file);
+    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.state.classId).toBe('furyborn');
+    expect(migrated.state.resource).toBe(0);
+    // Legacy fields preserved.
+    expect(migrated.state.zoneId).toBe('whitestone');
+    expect(migrated.state.killCount).toBe(0);
   });
 
   it('buildSaveFile stamps schema + timestamps', () => {

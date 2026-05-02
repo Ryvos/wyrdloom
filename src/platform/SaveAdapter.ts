@@ -13,10 +13,17 @@ import type { Equipment } from '../systems/inventory';
 import type { Inventory } from '../systems/bag';
 import type { QuestState } from '../systems/quests';
 import type { ZoneId } from '../systems/zone';
+import type { ClassId } from '../types/class';
 
 // Bump this when the save shape changes; add a migrator to MIGRATIONS at the
 // same time. Loaders fail-fast on unknown versions.
-export const SAVE_SCHEMA_VERSION = 1;
+//
+// Schema history:
+//   1 (v0.6.0) — baseline. zone+seed+inventory+equipment+hotbar+quests.
+//   2 (v0.7.0) — adds classId + resource. Legacy v1 saves migrate to a
+//                Furyborn character with empty resource (the only class that
+//                exists in v0.7.0).
+export const SAVE_SCHEMA_VERSION = 2;
 
 // Slots are 1..MAX_SLOTS (slot 0 reserved for "current/auto" if we ever
 // split auto vs manual saves; v0.6.0 ships 5 manual slots only).
@@ -36,6 +43,10 @@ export interface SaveState {
   readonly playerHp: number;
   readonly playerStatsAtk: number;
   readonly playerStatsMaxHp: number;
+  // Class + resource (v0.7.0+). Pre-v0.7.0 saves migrate to Furyborn / 0
+  // resource via MIGRATIONS[1].
+  readonly classId: ClassId;
+  readonly resource: number;
   // Inventory + equipment
   readonly inventory: Inventory;
   readonly equipment: Equipment;
@@ -73,9 +84,21 @@ export interface SaveAdapter {
 }
 
 // Migration table — keyed by source schema version. Each migrator returns
-// the next version's shape. Empty in v0.6.0; populated when we bump.
+// the next version's shape.
 type AnyState = Record<string, unknown>;
-export const MIGRATIONS: Record<number, (s: AnyState) => AnyState> = {};
+export const MIGRATIONS: Record<number, (s: AnyState) => AnyState> = {
+  // v0.6.0 → v0.7.0: introduces classId + resource. v0.6 saves are silently
+  // promoted to Furyborn / 0 rage, since Furyborn is the only class wired in
+  // v0.7.0 and there's no character-creation flow yet.
+  1: (file): AnyState => {
+    const oldState = (file.state as AnyState) ?? {};
+    return {
+      ...file,
+      schemaVersion: 2,
+      state: { ...oldState, classId: 'furyborn', resource: 0 },
+    };
+  },
+};
 
 // Apply migrations until current version is reached, or throw on unknown.
 export function migrate(file: SaveFile): SaveFile {

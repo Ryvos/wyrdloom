@@ -14,7 +14,9 @@ const W = 16;
 const H = 16;
 
 // Doorway tile — floor, but tagged in the Zone's doorway list.
-const DOORWAY_TILE = { tx: 8, ty: 14 } as const;
+const DOORWAY_TILE_CATACOMBS = { tx: 8, ty: 14 } as const;
+// East gate to the Frostvein caves — Act II descent.
+const DOORWAY_TILE_FROSTVEIN = { tx: 14, ty: 8 } as const;
 
 function buildTiles(): Tile[][] {
   const tiles: Tile[][] = Array.from({ length: H }, () =>
@@ -49,15 +51,23 @@ export function makeWhitestoneZone(): Zone {
     playerEntry: { tx: 8, ty: 8 },
     doorways: [
       {
-        tx: DOORWAY_TILE.tx,
-        ty: DOORWAY_TILE.ty,
+        tx: DOORWAY_TILE_CATACOMBS.tx,
+        ty: DOORWAY_TILE_CATACOMBS.ty,
         target: 'catacombs',
         label: 'Catacombs entrance',
       },
+      {
+        tx: DOORWAY_TILE_FROSTVEIN.tx,
+        ty: DOORWAY_TILE_FROSTVEIN.ty,
+        target: 'frostvein',
+        label: 'Frostvein caves',
+      },
     ],
-    // When returning from the catacombs, drop in next to the doorway.
+    // When returning from a dungeon, drop the player one tile inside the
+    // doorway (so they don't immediately step back onto it).
     entryFromZone: {
       catacombs: { tx: 8, ty: 13 },
+      frostvein: { tx: 13, ty: 8 },
     },
   };
 }

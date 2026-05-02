@@ -60,6 +60,50 @@ export function makeHollowBishopSprite(): Container {
   return c;
 }
 
+export function makeWormMotherSprite(): Container {
+  const c = new Container();
+  // Bulbous segmented worm body — wider than the Bishop, hunched lower.
+  const body = new Graphics();
+  // Lower segment — fat base.
+  body
+    .ellipse(0, TILE_H / 2 + 4, 14, 9)
+    .fill(0x4a6a4a)
+    .stroke({ color: 0x1a2a1a, width: 2 });
+  // Mid segment.
+  body
+    .ellipse(0, TILE_H / 2 - 6, 12, 7)
+    .fill(0x5a7a5a)
+    .stroke({ color: 0x1a2a1a, width: 2 });
+  // Upper segment + head.
+  body
+    .ellipse(0, -TILE_H / 2 - 2, 10, 10)
+    .fill(0x6a8a6a)
+    .stroke({ color: 0x1a2a1a, width: 2 });
+  // Mandibles — two small triangles flanking the head.
+  body
+    .poly([
+      { x: -8, y: -TILE_H / 2 - 6 },
+      { x: -5, y: -TILE_H / 2 + 2 },
+      { x: -10, y: -TILE_H / 2 + 1 },
+    ])
+    .fill(0xc8b878)
+    .stroke({ color: 0x1a2a1a, width: 1.5 });
+  body
+    .poly([
+      { x: 8, y: -TILE_H / 2 - 6 },
+      { x: 5, y: -TILE_H / 2 + 2 },
+      { x: 10, y: -TILE_H / 2 + 1 },
+    ])
+    .fill(0xc8b878)
+    .stroke({ color: 0x1a2a1a, width: 1.5 });
+  // Cluster of glowing eyes.
+  body.circle(-3, -TILE_H / 2 - 4, 1.4).fill(0xfff19a);
+  body.circle(0, -TILE_H / 2 - 6, 1.4).fill(0xfff19a);
+  body.circle(3, -TILE_H / 2 - 4, 1.4).fill(0xfff19a);
+  c.addChild(body);
+  return c;
+}
+
 // Square attack-flash overlay; tweens via the caller.
 export function makeHitFlash(): Graphics {
   const g = new Graphics();

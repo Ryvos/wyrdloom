@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 // Seed handpicked from offline probe — yields a magic Honed Iron Sword of Malice
 // (weapon, baseDamage 10, +Honed atk_flat, +of-Malice atk_flat).
 const WEAPON_SEED = 'weapon-seed-17';
@@ -63,7 +63,7 @@ test.describe('loot pipeline (pickup goes into bag, zone-aware)', () => {
       atk: window.__wyrdloom.playerAtk,
       bag: window.__wyrdloom.inventory,
     }));
-    expect(initial.atk).toBe(25);
+    expect(initial.atk).toBe(28); // Furyborn baseline
     expect(initial.bag).toHaveLength(0);
 
     await page.evaluate((s) => {
@@ -98,7 +98,7 @@ test.describe('loot pipeline (pickup goes into bag, zone-aware)', () => {
       y: 0,
     });
     // Pickup is bag-only in v0.4.0+; equipping is a separate panel click.
-    expect(after.atk).toBe(25);
+    expect(after.atk).toBe(28);
     expect(after.ground).toHaveLength(0);
   });
 });

@@ -55,6 +55,7 @@ export const INTENT_UNEQUIP_EVENT = 'wyrdloom:intent-unequip';
 export const INTENT_DROP_EVENT = 'wyrdloom:intent-drop';
 export const INTENT_IMBUE_EVENT = 'wyrdloom:intent-imbue';
 export const INTENT_SOCKET_EVENT = 'wyrdloom:intent-socket';
+export const INTENT_ECHO_ENTER_EVENT = 'wyrdloom:intent-echo-enter';
 
 export interface EquipIntent {
   readonly uid: string; // item uid in inventory
@@ -72,4 +73,7 @@ export interface SocketIntent {
   readonly gemUid: string;        // bag-wrapped gem to consume
   readonly targetUid: string;     // item with the empty socket (bag or equipped)
   readonly socketIx?: number;     // optional explicit socket index
+}
+export interface EchoEnterIntent {
+  readonly sigilUid: string;      // bag-wrapped sigil to consume
 }

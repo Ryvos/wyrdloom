@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const TARGET_VERSION = '0.9.0';
+const TARGET_VERSION = '0.10.0';
 
 // v0.6.0+: player boots in the Whitestone hub. Catacombs is reached by
 // stepping onto the south doorway, or via dev.changeZone() in tests.

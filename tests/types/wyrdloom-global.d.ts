@@ -52,7 +52,7 @@ interface Window {
       entrance: { tx: number; ty: number };
       boss: { tx: number; ty: number };
     };
-    readonly zoneId: 'whitestone' | 'catacombs' | 'frostvein' | 'cinderfall';
+    readonly zoneId: 'whitestone' | 'catacombs' | 'frostvein' | 'cinderfall' | 'echo';
     readonly npcs: ReadonlyArray<{
       id: string;
       kind: 'questboard' | 'smith' | 'imbuer' | 'stash';
@@ -67,6 +67,9 @@ interface Window {
     readonly hollowBishopPhase: number;
     readonly wormMotherPhase: number;
     readonly pactBearerPhase: number;
+    readonly pinnaclePhase: number;
+    readonly echoTier: number;
+    readonly echoFloor: number;
     readonly classId: string | null;
     readonly resource: number;
     readonly resourceMax: number;
@@ -75,7 +78,7 @@ interface Window {
       setPlayerHp(n: number): void;
       forceDrop(seed: string, tile?: { tx: number; ty: number }): void;
       giveItem(seed: string): void;
-      openPanel(id: 'inventory' | 'character' | 'bind' | 'imbuer'): void;
+      openPanel(id: 'inventory' | 'character' | 'bind' | 'imbuer' | 'echo-portal'): void;
       closeAllPanels(): void;
       equipFromInventoryByUid(uid: string): void;
       unequipSlot(slot: 'weapon' | 'head' | 'chest' | 'ring'): void;
@@ -83,7 +86,7 @@ interface Window {
       teleportPlayer(tx: number, ty: number): boolean;
       teleportEnemy(id: string, tx: number, ty: number): boolean;
       attackEnemy(id: string): boolean;
-      changeZone(target: 'whitestone' | 'catacombs' | 'frostvein' | 'cinderfall'): void;
+      changeZone(target: 'whitestone' | 'catacombs' | 'frostvein' | 'cinderfall' | 'echo'): void;
       saveNow(slot?: number): Promise<void>;
       loadSlot(slot?: number): Promise<boolean>;
       deleteSlot(slot?: number): Promise<void>;
@@ -94,7 +97,7 @@ interface Window {
         updatedAt: number;
         version: string;
       }>>;
-      openNpcByKind(kind: 'questboard' | 'smith' | 'imbuer' | 'stash'): Promise<boolean>;
+      openNpcByKind(kind: 'questboard' | 'smith' | 'imbuer' | 'stash' | 'wyrdkeeper'): Promise<boolean>;
       setClass(classId: 'furyborn' | 'bonecaller' | 'frostmark' | 'sealwarden'): boolean;
     };
   };

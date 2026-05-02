@@ -98,4 +98,10 @@ export const WHITESTONE_NPCS = [
     name: 'The Imbuer',
     tile: { tx: 11, ty: 10 },
   },
+  {
+    id: 'wyrdkeeper',
+    kind: 'wyrdkeeper' as const,
+    name: 'The Wyrdkeeper',
+    tile: { tx: 4, ty: 10 },
+  },
 ] as const;

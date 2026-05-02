@@ -1,10 +1,11 @@
-// WYRDLOOM v0.9.0 — Week 9: Cinderfall + Pact-Bearer + ending. Frostmark playable.
-// New in v0.9.0: Frostmark class (Agility/Mana/Ice-ranger; 6-skill kit, 3
-// implemented), Cinderfall zone (Act III biome with warm-amber color grade)
-// reachable from the west gate of Whitestone, the Pact-Bearer act-final boss
-// with 3 phases and a guaranteed unique drop, an ending overlay triggered on
-// the Pact-Bearer kill (one-shot via SaveState.endingSeen), and SaveAdapter
-// v4 with the third schema migration in the table.
+// WYRDLOOM v0.10.0 — Week 10: The Echo + sigils + Mythic + Pinnacle. Sealwarden unlocks.
+// New in v0.10.0: Sealwarden class (Faith/Vigil/Paladin; gated on endingSeen
+// per spec §4.2), Sigil items (drop from bosses; consumed at the Whitestone
+// Wyrdkeeper to enter the Echo at the sigil's tier), the Echo endless dungeon
+// (procgen per-floor with tier-scaled monsters; Pinnacle on floor 5), the
+// Pinnacle act-final-of-the-endgame boss with stat-scaling-with-tier and a
+// guaranteed Mythic drop, 5 Mythic items in data/mythics.json (highest tier
+// ever shipped), and SaveAdapter v5 persisting Echo run state.
 
 import { Application, Container, Graphics, ColorMatrixFilter, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
@@ -19,6 +20,8 @@ import {
   WORM_MOTHER_PHASE_MODS,
   PACT_BEARER_STATS,
   PACT_BEARER_PHASE_MODS,
+  PINNACLE_STATS,
+  PINNACLE_PHASE_MODS,
   bossPhase,
   type ActorStats,
   type PhaseMod,
@@ -38,6 +41,7 @@ import {
   makeHollowBishopSprite,
   makeWormMotherSprite,
   makePactBearerSprite,
+  makePinnacleSprite,
   makeHitFlash,
 } from './fx/sprites';
 import { makeNpcSprite } from './fx/npc_sprite';
@@ -48,7 +52,7 @@ import { mountResourceBar } from './ui/resource_bar';
 import type { ResourceBar } from './ui/resource_bar';
 import { getClass } from './systems/class';
 import { getSkill } from './systems/skills';
-import { rollDrop, rollGemDrop } from './systems/loot';
+import { rollDrop, rollGemDrop, rollSigilDrop } from './systems/loot';
 import { imbueRare, socketGem } from './systems/crafting';
 import { computeDerivedStats, equip, unequip } from './systems/inventory';
 import {
@@ -70,11 +74,13 @@ import {
   INTENT_DROP_EVENT,
   INTENT_IMBUE_EVENT,
   INTENT_SOCKET_EVENT,
+  INTENT_ECHO_ENTER_EVENT,
   type EquipIntent,
   type UnequipIntent,
   type DropIntent,
   type ImbueIntent,
   type SocketIntent,
+  type EchoEnterIntent,
 } from './ui/store';
 import { dispatchPanelToggle, type PanelId } from './ui/panel';
 import { SKILL_TRIGGER_EVENT } from './ui/hotbar';
@@ -89,6 +95,7 @@ import { makeWhitestoneZone, WHITESTONE_NPCS } from './levels/whitestone';
 import { makeCatacombsZone } from './levels/catacombs';
 import { makeFrostveinZone } from './levels/frostvein';
 import { makeCinderfallZone } from './levels/cinderfall';
+import { makeEchoZone } from './levels/echo';
 import {
   makeQuestState,
   onEnemyKilled,
@@ -109,10 +116,11 @@ import './ui/bind_panel';
 import './ui/quest_tracker';
 import './ui/npc_dialog';
 import './ui/imbuer_panel';
+import './ui/echo_portal_panel';
 import './ui/ending_overlay';
 import { ENDING_SHOW_EVENT } from './ui/ending_overlay';
 
-const APP_VERSION = '0.9.0';
+const APP_VERSION = '0.10.0';
 const DEFAULT_CATACOMBS_SEED = 'catacombs-1';
 const DEFAULT_FROSTVEIN_SEED = 'frostvein-1';
 const DEFAULT_CINDERFALL_SEED = 'cinderfall-1';
@@ -122,10 +130,20 @@ const RESPAWN_ENEMY_DELAY_MS = 3000;
 const HOLLOW_BISHOP_ID = 'hollow-bishop';
 const WORM_MOTHER_ID = 'worm-mother';
 const PACT_BEARER_ID = 'pact-bearer';
-type BossId = typeof HOLLOW_BISHOP_ID | typeof WORM_MOTHER_ID | typeof PACT_BEARER_ID;
+const PINNACLE_ID = 'pinnacle';
+type BossId =
+  | typeof HOLLOW_BISHOP_ID
+  | typeof WORM_MOTHER_ID
+  | typeof PACT_BEARER_ID
+  | typeof PINNACLE_ID;
 
 function isBossId(id: string): id is BossId {
-  return id === HOLLOW_BISHOP_ID || id === WORM_MOTHER_ID || id === PACT_BEARER_ID;
+  return (
+    id === HOLLOW_BISHOP_ID ||
+    id === WORM_MOTHER_ID ||
+    id === PACT_BEARER_ID ||
+    id === PINNACLE_ID
+  );
 }
 
 interface ActorView {
@@ -169,6 +187,10 @@ interface World {
   enemyRespawnQueue: { id: string; spawnAt: number }[];
   killCount: number; // drives loot seed
   endingSeen: boolean; // flips true on Pact-Bearer kill (acts as one-shot gate)
+  // Active Echo run — populated by the Wyrdkeeper when the player consumes
+  // a sigil. Cleared on returning to Whitestone or completing floor 5.
+  echoTier: number;    // 0 = no active echo run
+  echoFloor: number;   // 1..5; 5 == Pinnacle floor
   hoveringItemId: string | null;
   playerPath: PathTile[] | null;
   playerPathIx: number;
@@ -187,6 +209,7 @@ interface World {
   hollowBishopPhase: 1 | 2 | 3;
   wormMotherPhase: 1 | 2 | 3;
   pactBearerPhase: 1 | 2 | 3;
+  pinnaclePhase: 1 | 2 | 3;
 }
 
 async function main(): Promise<void> {
@@ -272,6 +295,8 @@ async function main(): Promise<void> {
     enemyRespawnQueue: [],
     killCount: 0,
     endingSeen: false,
+    echoTier: 0,
+    echoFloor: 1,
     hoveringItemId: null,
     playerPath: null,
     playerPathIx: 0,
@@ -283,6 +308,7 @@ async function main(): Promise<void> {
     hollowBishopPhase: 1,
     wormMotherPhase: 1,
     pactBearerPhase: 1,
+    pinnaclePhase: 1,
   };
 
   // Initial zone setup — spawn NPCs (Whitestone) or enemies (Catacombs).
@@ -404,6 +430,15 @@ async function main(): Promise<void> {
     get pactBearerPhase(): number {
       return W.pactBearerPhase;
     },
+    get pinnaclePhase(): number {
+      return W.pinnaclePhase;
+    },
+    get echoTier(): number {
+      return W.echoTier;
+    },
+    get echoFloor(): number {
+      return W.echoFloor;
+    },
     get wormMotherPhase(): number {
       return W.wormMotherPhase;
     },
@@ -457,11 +492,11 @@ async function main(): Promise<void> {
         addItem(W.inventory, item);
         syncStore(W);
       },
-      openPanel(id: 'inventory' | 'character' | 'bind' | 'imbuer'): void {
+      openPanel(id: 'inventory' | 'character' | 'bind' | 'imbuer' | 'echo-portal'): void {
         dispatchPanelToggle({ id, open: true });
       },
       closeAllPanels(): void {
-        for (const id of ['inventory', 'character', 'bind', 'imbuer'] as const) {
+        for (const id of ['inventory', 'character', 'bind', 'imbuer', 'echo-portal'] as const) {
           dispatchPanelToggle({ id, open: false });
         }
       },
@@ -486,6 +521,12 @@ async function main(): Promise<void> {
       setClass(classId: ClassId): boolean {
         const cls = getClass(classId);
         if (!cls) return false;
+        // Sealwarden unlocks post Act III per spec §4.2. The Pact-Bearer's
+        // ending dismissal flips W.endingSeen — that's the gate.
+        if (classId === 'sealwarden' && !W.endingSeen) {
+          console.warn('Sealwarden is locked until the Pact-Bearer falls.');
+          return false;
+        }
         playerActor.classId = classId;
         playerActor.resource = 0;
         // Actor.stats is `readonly` by convention (base/unchanging) — class
@@ -671,13 +712,23 @@ function handleKill(W: World, view: ActorView, nowMs: number): void {
     : `${id}-${W.killCount}-${Math.floor(nowMs)}`;
   // Worm-Mother sits at monster level 16 (Act II final) vs 12 for Bishop.
   const monsterLevel = isBoss
-    ? id === PACT_BEARER_ID
+    ? id === PINNACLE_ID
+      ? 20 + W.echoTier // tier-15 Pinnacle = mlvl 35; spec target for Mythic guarantee
+      : id === PACT_BEARER_ID
       ? 20
       : id === WORM_MOTHER_ID
       ? 16
       : 12
+    : W.currentZone.id === 'echo'
+    ? Math.max(5, 5 + W.echoTier) // Echo grunts scale with tier
     : 5;
-  const item = rollDrop({ monsterLevel, seed: dropSeed, guaranteed: isBoss });
+  const isMythic = id === PINNACLE_ID;
+  const item = rollDrop({
+    monsterLevel,
+    seed: dropSeed,
+    guaranteed: isBoss,
+    mythic: isMythic,
+  });
   if (item) {
     const dropTile = { ...view.actor.tile };
     const groundView = spawnGroundItem(W.world, W.app.ticker, item, dropTile);
@@ -693,6 +744,18 @@ function handleKill(W: World, view: ActorView, nowMs: number): void {
       W.groundItems.push(groundView);
     }
   }
+  // Sigil drops: Pact-Bearer kill always yields a tier 1-3 sigil so the
+  // Echo loop is reachable from a single Act III run. Other bosses get a
+  // smaller chance via the same function (no forced flag).
+  if (isBoss) {
+    const forced = id === PACT_BEARER_ID;
+    const sigil = rollSigilDrop({ monsterLevel, seed: dropSeed }, { forced });
+    if (sigil) {
+      const dropTile = { ...view.actor.tile };
+      const groundView = spawnGroundItem(W.world, W.app.ticker, sigil, dropTile);
+      W.groundItems.push(groundView);
+    }
+  }
   if (isBoss) {
     const done = onBossKilled(W.quests, id);
     for (const cid of done) activateNextMainAfter(W.quests, cid);
@@ -702,6 +765,15 @@ function handleKill(W: World, view: ActorView, nowMs: number): void {
     // v0.11+) won't replay it because endingSeen flips on dismissal.
     if (id === PACT_BEARER_ID && !W.endingSeen) {
       window.dispatchEvent(new CustomEvent(ENDING_SHOW_EVENT));
+    }
+    // Pinnacle kill closes the Echo run — clear the active tier/floor and
+    // bounce the player back to Whitestone so the new gear can be examined
+    // and the next sigil consumed at leisure.
+    if (id === PINNACLE_ID) {
+      W.echoTier = 0;
+      W.echoFloor = 1;
+      // Defer one tick so the death animation/popup lands first.
+      setTimeout(() => loadZone(W, 'whitestone', 'echo'), 800);
     }
   } else {
     const done = onEnemyKilled(W.quests, W.currentZone.id);
@@ -765,6 +837,14 @@ function applyZoneFilter(world: Container, zoneId: ZoneId): void {
       f.tint(0xffb070, true);
       f.brightness(0.95, true);
       break;
+    case 'echo':
+      // The Echo shares the Catacombs biome but reads as deeper, eerier —
+      // higher contrast, a violet bias, and brightness pulled down so each
+      // floor feels like an unstable echo of the surface world.
+      f.saturate(-0.3, false);
+      f.tint(0x9a8ad0, true);
+      f.brightness(0.75, true);
+      break;
   }
   world.filters = [f];
 }
@@ -784,6 +864,7 @@ function clearZone(W: World): void {
   W.hollowBishopPhase = 1;
   W.wormMotherPhase = 1;
   W.pactBearerPhase = 1;
+  W.pinnaclePhase = 1;
 }
 
 // Spawn the actors a zone owns at boot or after a transition.
@@ -843,7 +924,58 @@ function spawnZoneActors(W: World, _fromZone: ZoneId | null): void {
     const pact = makeActor(PACT_BEARER_ID, 'enemy', PACT_BEARER_STATS, bossTile);
     W.enemies.push(mountActorView(W.world, pact, makePactBearerSprite()));
     W.pactBearerPhase = 1;
+    return;
   }
+
+  if (W.currentZone.id === 'echo') {
+    spawnEchoActors(W);
+  }
+}
+
+// Spawn the actors for an Echo floor. Floors 1-4 are progressively scaled
+// grunt packs (count + atk scale with sigil tier). Floor 5 hosts the
+// Pinnacle (mythic-drop encounter). Tier-driven scaling lives here so the
+// rest of the spawn pipeline stays unaware of the Echo's existence.
+function spawnEchoActors(W: World): void {
+  const map = W.currentZone.map;
+  const tier = Math.max(1, W.echoTier);
+  const floor = Math.max(1, Math.min(5, W.echoFloor));
+
+  if (floor < 5) {
+    // Pack count grows with floor + tier. Each grunt pulls scaled stats
+    // from ENEMY_STATS — atk + maxHp scale 1 + 0.15 × tier; cooldown gets
+    // tighter every 2 tiers for a real difficulty bump.
+    const packCount = Math.min(6, 1 + Math.floor((tier + floor) / 2));
+    const stats: ActorStats = {
+      ...ENEMY_STATS,
+      maxHp: Math.floor(ENEMY_STATS.maxHp * (1 + tier * 0.15)),
+      atk: Math.floor(ENEMY_STATS.atk * (1 + tier * 0.15)),
+      atkCooldownMs: Math.max(380, ENEMY_STATS.atkCooldownMs - tier * 30),
+    };
+    for (let i = 0; i < packCount; i++) {
+      const room = map.rooms[i % map.rooms.length] ?? map.entrance;
+      const tile = {
+        tx: room.x + (i % room.w),
+        ty: room.y + Math.floor(i / room.w) % room.h,
+      };
+      if (!isFloor(W.dungeon, tile.tx, tile.ty)) continue;
+      const e = makeActor(`echo-grunt-${tier}-${floor}-${i}`, 'enemy', stats, tile);
+      W.enemies.push(mountActorView(W.world, e, makeEnemySprite()));
+    }
+    return;
+  }
+
+  // Floor 5 — Pinnacle. Stats scale linearly with tier so a tier-15 run is
+  // the spec target difficulty for guaranteed Mythic drops.
+  const bossTile = roomCenter(map.boss);
+  const pinStats: ActorStats = {
+    ...PINNACLE_STATS,
+    maxHp: Math.floor(PINNACLE_STATS.maxHp * (1 + tier * 0.2)),
+    atk: Math.floor(PINNACLE_STATS.atk * (1 + tier * 0.12)),
+  };
+  const pin = makeActor(PINNACLE_ID, 'enemy', pinStats, bossTile);
+  W.enemies.push(mountActorView(W.world, pin, makePinnacleSprite()));
+  W.pinnaclePhase = 1;
 }
 
 // Switch to a different zone. Called when the player walks onto a doorway.
@@ -853,6 +985,12 @@ function loadZone(W: World, target: ZoneId, from: ZoneId | null): void {
   if (target === 'whitestone') zone = makeWhitestoneZone();
   else if (target === 'frostvein') zone = makeFrostveinZone(DEFAULT_FROSTVEIN_SEED);
   else if (target === 'cinderfall') zone = makeCinderfallZone(DEFAULT_CINDERFALL_SEED);
+  else if (target === 'echo') {
+    zone = makeEchoZone({
+      tier: W.echoTier > 0 ? W.echoTier : 1,
+      floor: W.echoFloor,
+    });
+  }
   else zone = makeCatacombsZone(DEFAULT_CATACOMBS_SEED);
 
   // Tear down old visuals and actors.
@@ -996,6 +1134,11 @@ function openNpcDialog(W: World, def: NpcDef): void {
   if (def.kind === 'imbuer') {
     dispatchPanelToggle({ id: 'imbuer', open: true });
   }
+  // Wyrdkeeper opens the Echo Portal — same pattern as Imbuer. Lists the
+  // player's sigils for consumption.
+  if (def.kind === 'wyrdkeeper') {
+    dispatchPanelToggle({ id: 'echo-portal', open: true });
+  }
 }
 
 // Set the player's goal + attack target and recompute the A* path. Single
@@ -1042,7 +1185,7 @@ function bindHoverHandler(W: World): void {
 const BOSS_CONFIG: Record<BossId, {
   baseStats: ActorStats;
   mods: readonly [PhaseMod, PhaseMod, PhaseMod];
-  phaseField: 'hollowBishopPhase' | 'wormMotherPhase' | 'pactBearerPhase';
+  phaseField: 'hollowBishopPhase' | 'wormMotherPhase' | 'pactBearerPhase' | 'pinnaclePhase';
 }> = {
   [HOLLOW_BISHOP_ID]: {
     baseStats: HOLLOW_BISHOP_STATS,
@@ -1058,6 +1201,11 @@ const BOSS_CONFIG: Record<BossId, {
     baseStats: PACT_BEARER_STATS,
     mods: PACT_BEARER_PHASE_MODS,
     phaseField: 'pactBearerPhase',
+  },
+  [PINNACLE_ID]: {
+    baseStats: PINNACLE_STATS,
+    mods: PINNACLE_PHASE_MODS,
+    phaseField: 'pinnaclePhase',
   },
 };
 
@@ -1219,6 +1367,26 @@ function handleSocket(
   syncStore(W);
 }
 
+// Consume a sigil from the bag and load the Echo zone at that tier. Called
+// from the Wyrdkeeper panel via INTENT_ECHO_ENTER_EVENT. Auto-saves before
+// transition so the run is recoverable on reload (the loaded save resumes
+// from the Echo entry tile, tier preserved).
+function handleEchoEnter(W: World, sigilUid: string): void {
+  const slot = W.inventory.slots.find((s) => s.item.uid === sigilUid);
+  if (!slot || !slot.item.sigil) {
+    console.warn('Echo enter: sigil not found in bag');
+    return;
+  }
+  const tier = slot.item.sigil.tier;
+  removeItem(W.inventory, sigilUid);
+  W.echoTier = tier;
+  W.echoFloor = 1;
+  // Close the portal panel so the canvas is unobstructed when the Echo loads.
+  dispatchPanelToggle({ id: 'echo-portal', open: false });
+  loadZone(W, 'echo', 'whitestone');
+  void autoSave(W).catch((err) => console.error('autoSave (echo enter) failed:', err));
+}
+
 function dropFromInventory(W: World, uid: string): void {
   const inSlot = W.inventory.slots.find((s) => s.item.uid === uid);
   if (!inSlot) return;
@@ -1293,6 +1461,7 @@ function snapshotSaveState(W: World): SaveState {
     killCount: W.killCount,
     quests: W.quests,
     endingSeen: W.endingSeen,
+    ...(W.echoTier > 0 ? { echoTier: W.echoTier, echoFloor: W.echoFloor } : {}),
   };
 }
 
@@ -1329,6 +1498,8 @@ async function loadSaveAndApply(W: World, slot: SlotIndex = 1): Promise<boolean>
   W.killCount = s.killCount;
   W.quests = s.quests;
   W.endingSeen = s.endingSeen;
+  W.echoTier = s.echoTier ?? 0;
+  W.echoFloor = s.echoFloor ?? 1;
   W.characterName = file.characterName;
   W.saveCreatedAt = file.createdAt;
   W.hpBar.set(W.player.actor.hp, W.player.actor.derivedStats.maxHp);
@@ -1356,6 +1527,10 @@ function bindIntentHandlers(W: World): void {
   window.addEventListener(INTENT_SOCKET_EVENT, (e: Event) => {
     const detail = (e as CustomEvent<SocketIntent>).detail;
     if (detail) handleSocket(W, detail);
+  });
+  window.addEventListener(INTENT_ECHO_ENTER_EVENT, (e: Event) => {
+    const detail = (e as CustomEvent<EchoEnterIntent>).detail;
+    if (detail) handleEchoEnter(W, detail.sigilUid);
   });
   window.addEventListener('wyrdloom:ending-dismiss', () => {
     W.endingSeen = true;
@@ -1394,7 +1569,7 @@ function bindKeyboard(W: World): void {
       }
       e.preventDefault();
     } else if (key === 'escape') {
-      const ids: PanelId[] = ['inventory', 'character', 'bind', 'imbuer'];
+      const ids: PanelId[] = ['inventory', 'character', 'bind', 'imbuer', 'echo-portal'];
       for (const id of ids) dispatchPanelToggle({ id, open: false });
       window.dispatchEvent(new CustomEvent('wyrdloom:npc-dialog-close'));
       e.preventDefault();

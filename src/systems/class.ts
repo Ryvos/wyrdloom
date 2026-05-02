@@ -58,7 +58,36 @@ export const FROSTMARK: ClassDef = {
   baseMoveCooldownMs: 130,
 };
 
-export const CLASSES: ReadonlyArray<ClassDef> = [FURYBORN, FROSTMARK];
+export const SEALWARDEN: ClassDef = {
+  id: 'sealwarden',
+  name: 'Sealwarden',
+  stat: 'faith',
+  resource: 'vigil',
+  resourceMax: 100,
+  // Vigil regenerates slowly out of combat AND builds modestly on hit — a
+  // hybrid pattern between Furyborn (rage from hits) and Frostmark (passive
+  // mana). Reads as a paladin who steadies between strikes.
+  resourceRegen: 2,
+  resourceOnHit: 6,
+  resourceColor: '#c8b878',
+  skills: [
+    'sw-smite',
+    'sw-consecrate',
+    'sw-aegis',
+    'sw-sanctify',
+    'sw-wrath',
+    'sw-final-verse',
+  ],
+  // Bulkiest of the three implemented classes — paladin theme: heaviest HP,
+  // measured swing, slowest movement. Atk per swing sits between Furyborn
+  // (28) and Frostmark (18).
+  baseHp: 145,
+  baseAtk: 24,
+  baseAtkCooldownMs: 520,
+  baseMoveCooldownMs: 170,
+};
+
+export const CLASSES: ReadonlyArray<ClassDef> = [FURYBORN, FROSTMARK, SEALWARDEN];
 
 export function getClass(id: ClassId): ClassDef | undefined {
   return CLASSES.find((c) => c.id === id);

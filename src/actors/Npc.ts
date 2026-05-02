@@ -8,7 +8,7 @@
 
 import type { TileCoord } from '../engine/iso';
 
-export type NpcKind = 'questboard' | 'smith' | 'imbuer' | 'stash';
+export type NpcKind = 'questboard' | 'smith' | 'imbuer' | 'stash' | 'wyrdkeeper';
 
 export interface NpcDef {
   readonly id: string;
@@ -36,5 +36,9 @@ export const NPC_DIALOG: Record<NpcKind, { greeting: string; teaser: string }> =
   stash: {
     greeting: 'Stash-keeper',
     teaser: '4 tabs × 10×10 storage — wired up in v0.7.0.',
+  },
+  wyrdkeeper: {
+    greeting: 'The Wyrdkeeper',
+    teaser: 'Bring me a sigil. The Echo will hear.',
   },
 };

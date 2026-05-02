@@ -148,6 +148,56 @@ export function makePactBearerSprite(): Container {
   return c;
 }
 
+export function makePinnacleSprite(): Container {
+  const c = new Container();
+  const body = new Graphics();
+  // The Pinnacle reads as an unstable echo of the Pact-Bearer — same
+  // armored silhouette, but the cape is fragmenting into shards and the
+  // body emits a violet inner light.
+  // Cape with shard-jagged hem.
+  body
+    .poly([
+      { x: -11, y: TILE_H / 2 + 10 },
+      { x: -8, y: TILE_H / 2 + 6 },
+      { x: -3, y: TILE_H / 2 + 10 },
+      { x: 0, y: TILE_H / 2 + 5 },
+      { x: 3, y: TILE_H / 2 + 10 },
+      { x: 8, y: TILE_H / 2 + 6 },
+      { x: 11, y: TILE_H / 2 + 10 },
+      { x: 7, y: -TILE_H / 2 + 4 },
+      { x: -7, y: -TILE_H / 2 + 4 },
+    ])
+    .fill(0x3a2a4a)
+    .stroke({ color: 0x140a1c, width: 2 });
+  // Plate cuirass — burnished dark with cracks of violet light.
+  body
+    .rect(-6, -TILE_H / 2 + 6, 12, 16)
+    .fill(0x4a3a5a)
+    .stroke({ color: 0x140a1c, width: 1.5 });
+  // Pinnacle sigil — a circle of violet light on the chest.
+  body.circle(0, -TILE_H / 2 + 12, 3).fill(0xc8a8ff);
+  body.circle(0, -TILE_H / 2 + 12, 1.5).fill(0xfff0ff);
+  // Helm — plate-faced with a wide visor of violet glow.
+  body
+    .rect(-6, -TILE_H / 2 - 6, 12, 9)
+    .fill(0x6a5a7a)
+    .stroke({ color: 0x140a1c, width: 1.5 });
+  body.rect(-5, -TILE_H / 2 - 3, 10, 1.8).fill(0xc8a8ff);
+  // Two echo-shards floating beside the figure.
+  body.poly([
+    { x: -16, y: -TILE_H / 2 - 1 },
+    { x: -13, y: -TILE_H / 2 - 5 },
+    { x: -11, y: -TILE_H / 2 - 1 },
+  ]).fill(0xc8a8ff).stroke({ color: 0x140a1c, width: 1 });
+  body.poly([
+    { x: 11, y: -TILE_H / 2 - 1 },
+    { x: 14, y: -TILE_H / 2 - 5 },
+    { x: 16, y: -TILE_H / 2 - 1 },
+  ]).fill(0xc8a8ff).stroke({ color: 0x140a1c, width: 1 });
+  c.addChild(body);
+  return c;
+}
+
 // Square attack-flash overlay; tweens via the caller.
 export function makeHitFlash(): Graphics {
   const g = new Graphics();

@@ -78,6 +78,10 @@ export interface Item {
   // socketing. `affixes` is empty, base damage/armor are absent, and
   // equip flow refuses it. Slot is a placeholder ('ring' is conventional).
   readonly gem?: Gem;
+  // When set, this Item is a bag-only Echo sigil. Consumed at the
+  // Wyrdkeeper to enter the Echo at the given tier (v0.10.0+).
+  // Like `gem`, `affixes` is empty and the slot is a placeholder.
+  readonly sigil?: { readonly tier: number };
 }
 
 // Gems — slot into items' empty sockets, grant a flat stat. v0.8.0 ships:
@@ -148,4 +152,11 @@ export interface GemFile {
 
 export interface UniqueFile {
   readonly uniques: ReadonlyArray<UniqueDef>;
+}
+
+// Mythic-tier item definition. Same shape as UniqueDef — fixed affixes,
+// flavor, baked sockets. v0.10.0 ships 5 entries in data/mythics.json,
+// dropped exclusively by the Pinnacle (spec §4.7).
+export interface MythicFile {
+  readonly mythics: ReadonlyArray<UniqueDef>;
 }

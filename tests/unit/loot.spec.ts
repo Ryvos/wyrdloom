@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rollDrop, rollAffixes, rollGemDrop } from '../../src/systems/loot';
+import { rollDrop, rollAffixes, rollGemDrop, rollSigilDrop } from '../../src/systems/loot';
 import { makeRng } from '../../src/systems/rng';
 import type { BaseItem } from '../../src/types/items';
 
@@ -117,5 +117,46 @@ describe('loot rolling', () => {
     const a = rollGemDrop({ monsterLevel: 8, seed: 'gem-seed-determinism' });
     const b = rollGemDrop({ monsterLevel: 8, seed: 'gem-seed-determinism' });
     expect(a).toEqual(b);
+  });
+
+  it('mythic flag forces a mythic-rarity drop (Pinnacle kill)', () => {
+    const drop = rollDrop({
+      monsterLevel: 35,
+      seed: 'pinnacle-1',
+      guaranteed: true,
+      mythic: true,
+    });
+    expect(drop).not.toBeNull();
+    expect(drop?.rarity).toBe('mythic');
+    expect(drop?.unique).toBeDefined(); // mythics share unique's flavor field
+    expect(drop?.sockets?.length).toBe(3); // every authored mythic has 3 sockets
+  });
+
+  it('mythic drops are deterministic for a fixed seed', () => {
+    const a = rollDrop({ monsterLevel: 35, seed: 'pinnacle-det', mythic: true });
+    const b = rollDrop({ monsterLevel: 35, seed: 'pinnacle-det', mythic: true });
+    expect(a).toEqual(b);
+  });
+
+  it('forced sigil drop returns a bag-only Item with a positive tier', () => {
+    const sigil = rollSigilDrop({ monsterLevel: 20, seed: 'pact-1' }, { forced: true });
+    expect(sigil).not.toBeNull();
+    expect(sigil?.sigil).toBeDefined();
+    expect((sigil?.sigil?.tier ?? 0)).toBeGreaterThanOrEqual(1);
+    expect(sigil?.affixes).toEqual([]);
+  });
+
+  it('sigil drops are deterministic and respect tier bounds', () => {
+    const a = rollSigilDrop(
+      { monsterLevel: 20, seed: 'sig-det' },
+      { forced: true, tierFloor: 3, tierCeil: 7 },
+    );
+    const b = rollSigilDrop(
+      { monsterLevel: 20, seed: 'sig-det' },
+      { forced: true, tierFloor: 3, tierCeil: 7 },
+    );
+    expect(a).toEqual(b);
+    expect(a?.sigil?.tier).toBeGreaterThanOrEqual(3);
+    expect(a?.sigil?.tier).toBeLessThanOrEqual(7);
   });
 });

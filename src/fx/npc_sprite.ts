@@ -41,6 +41,27 @@ export function makeNpcSprite(kind: NpcKind): Container {
       body.rect(-9, -TILE_H / 2 + 6, 18, 4).fill(0x4a3826);
       body.rect(-2, -TILE_H / 2 + 13, 4, 4).fill(0xc7b27a);
       break;
+    case 'wyrdkeeper':
+      // Hooded figure with a violet rune-light cradled in their hands. The
+      // Wyrdkeeper sits at the Echo portal — taller than the Imbuer, more
+      // ascetic in silhouette.
+      body.poly([
+        { x: -9, y: TILE_H / 2 + 8 },
+        { x: 9, y: TILE_H / 2 + 8 },
+        { x: 6, y: -TILE_H / 2 + 4 },
+        { x: -6, y: -TILE_H / 2 + 4 },
+      ]).fill(0x2a1a3a).stroke({ color: 0x140820, width: 1.5 });
+      // Hood — pulled forward, no face shown.
+      body.poly([
+        { x: -7, y: -TILE_H / 2 + 4 },
+        { x: 7, y: -TILE_H / 2 + 4 },
+        { x: 4, y: -TILE_H / 2 - 6 },
+        { x: -4, y: -TILE_H / 2 - 6 },
+      ]).fill(0x1a0a26).stroke({ color: 0x140820, width: 1.5 });
+      // Rune-light orb between cupped hands.
+      body.circle(0, -TILE_H / 2 + 10, 3.2).fill(0xc8a8ff);
+      body.circle(0, -TILE_H / 2 + 10, 1.6).fill(0xfff0ff);
+      break;
   }
   c.addChild(body);
   return c;

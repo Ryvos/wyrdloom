@@ -9,7 +9,7 @@
 
 import type { DungeonMap } from './procgen';
 
-export const ZONES = ['whitestone', 'catacombs', 'frostvein', 'cinderfall'] as const;
+export const ZONES = ['whitestone', 'catacombs', 'frostvein', 'cinderfall', 'echo'] as const;
 export type ZoneId = (typeof ZONES)[number];
 
 export interface DoorwayTile {

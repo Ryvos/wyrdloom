@@ -35,8 +35,8 @@ function fakeState(): SaveState {
 }
 
 describe('SaveAdapter', () => {
-  it('schema version is 4 in v0.9.0', () => {
-    expect(SAVE_SCHEMA_VERSION).toBe(4);
+  it('schema version is 5 in v0.10.0', () => {
+    expect(SAVE_SCHEMA_VERSION).toBe(5);
   });
 
   it('5 character slots, 1-indexed', () => {
@@ -86,8 +86,8 @@ describe('SaveAdapter', () => {
     expect(() => migrate(file)).toThrow(/migrator from schema 0/);
   });
 
-  it('MIGRATIONS table contains 1→2, 2→3, and 3→4 entries in v0.9.0', () => {
-    expect(Object.keys(MIGRATIONS).sort()).toEqual(['1', '2', '3']);
+  it('MIGRATIONS table contains 1→2, 2→3, 3→4, and 4→5 entries in v0.10.0', () => {
+    expect(Object.keys(MIGRATIONS).sort()).toEqual(['1', '2', '3', '4']);
   });
 
   it('migrate() upgrades a v1 save through v2 to v3 with Furyborn defaults', () => {
@@ -155,7 +155,24 @@ describe('SaveAdapter', () => {
     expect(migrated.state.classId).toBe('furyborn');
   });
 
-  it('migrate() upgrades a v3 save to v4 by stamping endingSeen: false', () => {
+  it('migrate() upgrades a v4 save to v5 (no shape change)', () => {
+    const v4State: SaveState = fakeState();
+    const file: SaveFile = {
+      schemaVersion: 4,
+      createdAt: 0,
+      updatedAt: 0,
+      characterName: 'Pre-Echo',
+      version: '0.9.0',
+      state: v4State,
+    };
+    const migrated = migrate(file);
+    expect(migrated.schemaVersion).toBe(5);
+    // echoTier / echoFloor stay absent — no active run on a pre-v0.10.0 save.
+    expect(migrated.state.echoTier).toBeUndefined();
+    expect(migrated.state.echoFloor).toBeUndefined();
+  });
+
+  it('migrate() upgrades a v3 save to v5 (endingSeen default + echo no-op stamp)', () => {
     const v3State = {
       playerHp: 120,
       playerStatsAtk: 28,
@@ -179,8 +196,9 @@ describe('SaveAdapter', () => {
       state: v3State as unknown as SaveState,
     };
     const migrated = migrate(file);
-    expect(migrated.schemaVersion).toBe(4);
+    expect(migrated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
     expect(migrated.state.endingSeen).toBe(false);
+    expect(migrated.state.echoTier).toBeUndefined();
   });
 
   it('buildSaveFile stamps schema + timestamps', () => {

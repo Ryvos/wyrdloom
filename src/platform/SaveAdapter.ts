@@ -30,7 +30,10 @@ import type { ClassId } from '../types/class';
 //                future shape-breaking change can branch on schemaVersion.
 //   4 (v0.9.0) — adds `endingSeen: boolean` (Pact-Bearer one-shot gate).
 //                Pre-v0.9.0 saves migrate to `endingSeen: false`.
-export const SAVE_SCHEMA_VERSION = 4;
+//   5 (v0.10.0) — adds `echoTier?: number` + `echoFloor?: number` for
+//                 active Echo runs. Pre-v0.10.0 saves get omitted fields
+//                 (no active run); the migrator is a version-stamp bump.
+export const SAVE_SCHEMA_VERSION = 5;
 
 // Slots are 1..MAX_SLOTS (slot 0 reserved for "current/auto" if we ever
 // split auto vs manual saves; v0.6.0 ships 5 manual slots only).
@@ -68,6 +71,10 @@ export interface SaveState {
   // v0.9.0+: flips true once the player dismisses the Pact-Bearer ending
   // overlay. Pre-v0.9.0 saves migrate to false (haven't reached Act III).
   readonly endingSeen: boolean;
+  // v0.10.0+: active Echo run state. Both omitted means the player is not
+  // mid-run. Tier ≥ 1 + floor 1..5 means resume into the Echo on load.
+  readonly echoTier?: number;
+  readonly echoFloor?: number;
 }
 
 export type SlotIndex = 1 | 2 | 3 | 4 | 5;
@@ -123,6 +130,10 @@ export const MIGRATIONS: Record<number, (s: AnyState) => AnyState> = {
       state: { ...oldState, endingSeen: false },
     };
   },
+  // v0.9.0 → v0.10.0: echoTier / echoFloor are optional fields. Absence
+  // means "no active Echo run" — the right default for v0.9.0 saves.
+  // Version-stamp bump only.
+  4: (file): AnyState => ({ ...file, schemaVersion: 5 }),
 };
 
 // Apply migrations until current version is reached, or throw on unknown.

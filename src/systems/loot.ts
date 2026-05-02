@@ -15,6 +15,7 @@
 import affixData from '@data/affixes.json';
 import gemData from '@data/gems.json';
 import itemData from '@data/items.json';
+import mythicData from '@data/mythics.json';
 import uniqueData from '@data/uniques.json';
 import type {
   AffixDef,
@@ -25,6 +26,7 @@ import type {
   GemFile,
   Item,
   ItemFile,
+  MythicFile,
   Rarity,
   RolledAffix,
   Slot,
@@ -38,6 +40,7 @@ const AFFIXES = affixData as AffixFile;
 const ITEMS = itemData as ItemFile;
 const GEMS = gemData as GemFile;
 const UNIQUES = uniqueData as UniqueFile;
+const MYTHICS = mythicData as MythicFile;
 
 // Drop chance + rarity weights. v0.8.0 reintroduces 'unique' at a low weight
 // so it can occasionally roll off any monster — but the bulk of uniques come
@@ -90,12 +93,26 @@ export interface DropContext {
   // Bishop / Worm-Mother / Pact-Bearer kills; the chance roll is skipped AND
   // rarity is forced to 'unique' (guaranteed unique on act-boss kill).
   readonly guaranteed?: boolean;
+  // Per spec §4.7: the Pinnacle drops Mythic exclusively. Set on Pinnacle
+  // kills only; supersedes `guaranteed` (also implies the chance roll is
+  // skipped). Routes the drop into rollMythicItem.
+  readonly mythic?: boolean;
 }
 
 // Returns null if no drop. Otherwise an Item instance with composed name + rolled affixes.
 // v0.8.0: Item may be a unique (fixed affixes from data/uniques.json) when rarity hits.
+// v0.10.0: ctx.mythic forces a Pinnacle-tier mythic drop.
 export function rollDrop(ctx: DropContext): Item | null {
   const rng = makeRng(ctx.seed);
+
+  if (ctx.mythic) {
+    const myth = rollMythicItem(rng, ctx);
+    if (myth) return myth;
+    // No mythic available — extraordinarily unlikely (the data file has 5
+    // entries gated at ilvl 30, and the Pinnacle's monsterLevel is 20+tier
+    // which crosses 30 at tier 10). Fall through to a unique as backstop.
+    return rollUniqueItem(rng, ctx);
+  }
 
   if (!ctx.guaranteed && rng.next() > DROP_CHANCE) return null;
 
@@ -131,6 +148,33 @@ export function rollDrop(ctx: DropContext): Item | null {
   return item;
 }
 
+// Roll a sigil drop. Sigils are bag-only Items with a tier (1..3 typically;
+// higher tiers come from Echo Pinnacle drops in v0.10.0+). The Pact-Bearer
+// guarantees a sigil; regular bosses get a small chance.
+export function rollSigilDrop(ctx: DropContext, opts: {
+  readonly forced?: boolean;
+  readonly tierFloor?: number;
+  readonly tierCeil?: number;
+} = {}): Item | null {
+  const rng = makeRng(`${ctx.seed}-sigil`);
+  const SIGIL_DROP_CHANCE = 0.08;
+  if (!opts.forced && rng.next() > SIGIL_DROP_CHANCE) return null;
+  const lo = opts.tierFloor ?? 1;
+  const hi = opts.tierCeil ?? Math.max(lo, 3);
+  const tier = rng.range(lo, hi);
+  const item: Item = {
+    uid: `item-${ctx.seed}-sigil-${rng.int(1_000_000)}`,
+    baseId: 'sigil',
+    name: `Sigil — Tier ${tier}`,
+    rarity: 'rare', // sigil glow color uses rare gold so it stands out
+    slot: 'ring',
+    ilvl: 1,
+    affixes: [],
+    sigil: { tier },
+  };
+  return item;
+}
+
 // Roll a loose gem as a ground-droppable Item. Returns null most of the time;
 // kept separate from rollDrop so callers can let a single kill drop both gear
 // AND a gem (Diablo-style mixed loot).
@@ -162,6 +206,44 @@ export function rollGemDrop(ctx: DropContext): Item | null {
     ilvl: 1,
     affixes: [],
     gem,
+  };
+  return item;
+}
+
+function rollMythicItem(rng: Rng, ctx: DropContext): Item | null {
+  // Mythic gating: ilvl <= monsterLevel. Pinnacle stats scale with sigil
+  // tier so a tier-10+ run reliably clears all 5 entries (ilvl 30).
+  const eligible = MYTHICS.mythics.filter((u) => u.ilvl <= ctx.monsterLevel);
+  if (eligible.length === 0) return null;
+
+  // Equal weights — there are only 5 mythics; ilvl-bias would barely shift
+  // anything and the spec wants every mythic to feel like a chase.
+  const def = rng.pick(eligible);
+  const base = ITEMS.bases.find((b) => b.id === def.baseId);
+  if (!base) return null;
+
+  const affixes: RolledAffix[] = def.fixedAffixes.map((fa, ix) => ({
+    id: fa.affixId,
+    name: fa.affixName,
+    kind: ix === 0 ? 'prefix' : 'suffix',
+    modType: fa.modType,
+    value: fa.value,
+  }));
+
+  const socketCount = def.bonusSockets ?? 0;
+
+  const item: Item = {
+    uid: `item-${ctx.seed}-${rng.int(1_000_000)}`,
+    baseId: base.id,
+    name: def.name,
+    rarity: 'mythic',
+    slot: base.slot,
+    ilvl: def.ilvl,
+    affixes,
+    unique: { id: def.id, flavor: def.flavor },
+    ...(base.baseDamage !== undefined ? { baseDamage: base.baseDamage } : {}),
+    ...(base.baseArmor !== undefined ? { baseArmor: base.baseArmor } : {}),
+    ...(socketCount > 0 ? { sockets: new Array<Gem | null>(socketCount).fill(null) } : {}),
   };
   return item;
 }

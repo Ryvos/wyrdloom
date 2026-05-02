@@ -124,6 +124,27 @@ export const PACT_BEARER_PHASE_MODS: readonly [PhaseMod, PhaseMod, PhaseMod] = [
   { atkMul: 2.0, cooldownMul: 0.65 },  // phase 3 — desperate covenant
 ];
 
+// The Pinnacle — Echo floor-5 boss (spec §4.7: "drops Mythic exclusively").
+// Baseline values scale at runtime with sigil tier; the constants below are
+// the tier-1 floor. Curve mirrors the Pact-Bearer's shape but with a slightly
+// faster phase-3 cooldown crush — the Pinnacle is the spec's hardest fight,
+// arriving when the player has act-3 uniques + sockets + a Frostmark or
+// Sealwarden in their roster.
+export const PINNACLE_STATS: ActorStats = {
+  maxHp: 400,
+  atk: 28,
+  atkRange: 1,
+  atkCooldownMs: 950,
+  aggroRange: 10,
+  moveCooldownMs: 220,
+};
+
+export const PINNACLE_PHASE_MODS: readonly [PhaseMod, PhaseMod, PhaseMod] = [
+  { atkMul: 1.0, cooldownMul: 1.0 },   // phase 1 — overwhelming presence
+  { atkMul: 1.55, cooldownMul: 0.75 }, // phase 2 — echo-rift opens
+  { atkMul: 2.1, cooldownMul: 0.6 },   // phase 3 — pinnacle's wrath
+];
+
 export function bossPhase(hp: number, maxHp: number): 1 | 2 | 3 {
   if (maxHp <= 0) return 1;
   const frac = hp / maxHp;

@@ -71,6 +71,17 @@ export function mountTooltip(parent: HTMLElement): Tooltip {
         `<div style="color: ${gemColor};">+${item.gem.value} ${modLabel(item.gem.modType)} when socketed</div>`,
       ].join('');
     }
+    // Bag-only sigil: render a compact sigil card. Color scales with tier
+    // (cool gold at low tier, warm red at high tier).
+    if (item.sigil) {
+      const t = item.sigil.tier;
+      const sigilColor = t >= 10 ? '#c44a2a' : t >= 5 ? '#c8a64a' : '#c7b27a';
+      return [
+        `<div style="color: ${sigilColor}; font-weight: bold;">${escape(item.name)}</div>`,
+        `<div style="opacity: 0.7;">sigil &middot; tier ${t}</div>`,
+        `<div style="color: ${sigilColor}; font-size: 11px;">Consume at the Wyrdkeeper to enter the Echo.</div>`,
+      ].join('');
+    }
 
     const colorHex = '#' + RARITY_COLOR[item.rarity].toString(16).padStart(6, '0');
     const lines: string[] = [

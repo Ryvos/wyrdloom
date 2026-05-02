@@ -1,0 +1,40 @@
+{
+  "_comment": "5 mythic-tier items. Drop exclusively from the Pinnacle (Echo floor 5). Per spec §4.4, Mythic is the top rarity. Each entry has fixed affixes, flavor text, and 3 bonus sockets baked in (the spec target — every Mythic is a chase). Names + flavor tie back to the Pinnacle's identity (echo-shards, broken oaths, the Wyrd-thread). ilvl 30 across the board so they only roll from the Pinnacle's 20+tier monsterLevel.",
+  "mythics": [
+    { "id": "m-pinnacle-shard", "name": "Pinnacle Shard", "baseId": "steel-blade", "ilvl": 30, "flavor": "A splinter of the boss's halo. It hums when the bell rings.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 36, "affixId": "m-ps-atk",   "affixName": "+36 to Attack" },
+        { "modType": "atk_flat",  "value": 18, "affixId": "m-ps-atk2",  "affixName": "+18 to Attack" },
+        { "modType": "hp_flat",   "value": 80, "affixId": "m-ps-hp",    "affixName": "+80 Max HP" }
+      ], "bonusSockets": 3 },
+
+    { "id": "m-broken-oath", "name": "Broken Oath", "baseId": "gold-signet", "ilvl": 30, "flavor": "What the Pact-Bearer swore. What the Pinnacle remembers.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 28, "affixId": "m-bo-atk",   "affixName": "+28 to Attack" },
+        { "modType": "hp_flat",   "value": 60, "affixId": "m-bo-hp",    "affixName": "+60 Max HP" },
+        { "modType": "armor_flat","value": 12, "affixId": "m-bo-armor", "affixName": "+12 Armor" }
+      ], "bonusSockets": 3 },
+
+    { "id": "m-echo-thread", "name": "The Echo-Thread", "baseId": "chain-hauberk", "ilvl": 30, "flavor": "Stitched from the resonance. It hums against the skin of anyone with a name to lose.",
+      "fixedAffixes": [
+        { "modType": "armor_flat","value": 32, "affixId": "m-et-armor", "affixName": "+32 Armor" },
+        { "modType": "hp_flat",   "value": 100,"affixId": "m-et-hp",    "affixName": "+100 Max HP" },
+        { "modType": "atk_flat",  "value": 12, "affixId": "m-et-atk",   "affixName": "+12 to Attack" }
+      ], "bonusSockets": 3 },
+
+    { "id": "m-pinnacle-helm", "name": "Helm of the Pinnacle", "baseId": "winged-helm", "ilvl": 30, "flavor": "Worn once. Worn forever. Worn through every echo.",
+      "fixedAffixes": [
+        { "modType": "hp_flat",   "value": 80, "affixId": "m-ph-hp",    "affixName": "+80 Max HP" },
+        { "modType": "armor_flat","value": 14, "affixId": "m-ph-armor", "affixName": "+14 Armor" },
+        { "modType": "atk_flat",  "value": 16, "affixId": "m-ph-atk",   "affixName": "+16 to Attack" }
+      ], "bonusSockets": 3 },
+
+    { "id": "m-wyrdblade", "name": "Wyrdblade", "baseId": "steel-blade", "ilvl": 30, "flavor": "The relic the deeper catacombs whispered of, finally answered.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 44, "affixId": "m-wb-atk",   "affixName": "+44 to Attack" },
+        { "modType": "atk_flat",  "value": 22, "affixId": "m-wb-atk2",  "affixName": "+22 to Attack" },
+        { "modType": "hp_flat",   "value": 50, "affixId": "m-wb-hp",    "affixName": "+50 Max HP" },
+        { "modType": "armor_flat","value": 8,  "affixId": "m-wb-armor", "affixName": "+8 Armor" }
+      ], "bonusSockets": 3 }
+  ]
+}

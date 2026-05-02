@@ -50,6 +50,10 @@ export class WebSaveAdapter implements SaveAdapter {
         zoneId: file.state.zoneId,
         updatedAt: file.updatedAt,
         version: file.version,
+        // Legacy (pre-v0.11.0) saves don't carry hardcore; default to false
+        // here. The same default is stamped in by MIGRATIONS[5] when the slot
+        // is actually loaded — list() is a no-migrate fast scan.
+        hardcore: file.state.hardcore ?? false,
       });
     }
     return out;

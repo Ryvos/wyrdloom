@@ -63,6 +63,10 @@ export class TauriSaveAdapter implements SaveAdapter {
         zoneId: parsed.state.zoneId,
         updatedAt: parsed.updatedAt,
         version: parsed.version,
+        // Legacy (pre-v0.11.0) saves don't carry hardcore; default to false
+        // here. The same default is stamped in by MIGRATIONS[5] when the slot
+        // is actually loaded — list() is a no-migrate fast scan.
+        hardcore: parsed.state.hardcore ?? false,
       });
     }
     return out;

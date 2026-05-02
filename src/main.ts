@@ -1,11 +1,17 @@
-// WYRDLOOM v0.10.0 — Week 10: The Echo + sigils + Mythic + Pinnacle. Sealwarden unlocks.
-// New in v0.10.0: Sealwarden class (Faith/Vigil/Paladin; gated on endingSeen
-// per spec §4.2), Sigil items (drop from bosses; consumed at the Whitestone
-// Wyrdkeeper to enter the Echo at the sigil's tier), the Echo endless dungeon
-// (procgen per-floor with tier-scaled monsters; Pinnacle on floor 5), the
-// Pinnacle act-final-of-the-endgame boss with stat-scaling-with-tier and a
-// guaranteed Mythic drop, 5 Mythic items in data/mythics.json (highest tier
-// ever shipped), and SaveAdapter v5 persisting Echo run state.
+// WYRDLOOM v0.11.0 — Week 11: Settings + accessibility + Hardcore + character creation.
+// New in v0.11.0: a global Settings store backed by localStorage (color-blind
+// presets, reduce-motion, font scale, per-action keybinds, audio volumes —
+// survives save deletes), the <wyrd-settings> Lit panel rendered in #hud
+// (toggled by 'O' or the spec-aligned remappable bind), runtime accessibility
+// side effects (zone color filters compose with a color-blind matrix, hit
+// flashes + damage popups gate on reduceMotion, font scale flows through a
+// CSS variable), Hardcore mode wiring (per-character permadeath flag baked
+// into the SaveState; on player death the slot is wiped via SaveAdapter.remove
+// instead of respawning), the <wyrd-character-creation> first-boot modal
+// (class pick: Furyborn / Frostmark / Sealwarden — Sealwarden gated by an
+// account-wide localStorage unlock that flips on ending-dismiss — name input,
+// Hardcore opt-in), and SaveAdapter v6 stamping `hardcore: false` on legacy
+// saves via MIGRATIONS[5].
 
 import { Application, Container, Graphics, ColorMatrixFilter, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
@@ -117,10 +123,23 @@ import './ui/quest_tracker';
 import './ui/npc_dialog';
 import './ui/imbuer_panel';
 import './ui/echo_portal_panel';
+import './ui/settings_panel';
 import './ui/ending_overlay';
 import { ENDING_SHOW_EVENT } from './ui/ending_overlay';
+import './ui/character_creation';
+import {
+  CHARACTER_CREATE_EVENT,
+  SEALWARDEN_UNLOCK_KEY,
+  type CharacterCreateDetail,
+} from './ui/character_creation';
+import {
+  loadSettings,
+  SETTINGS_CHANGED_EVENT,
+  actionForCode,
+  type SettingsState,
+} from './systems/settings';
 
-const APP_VERSION = '0.10.0';
+const APP_VERSION = '0.11.0';
 const DEFAULT_CATACOMBS_SEED = 'catacombs-1';
 const DEFAULT_FROSTVEIN_SEED = 'frostvein-1';
 const DEFAULT_CINDERFALL_SEED = 'cinderfall-1';
@@ -175,6 +194,7 @@ interface World {
   readonly player: ActorView;
   readonly inventory: Inventory;
   readonly saveAdapter: SaveAdapter;
+  settings: SettingsState;
   enemies: ActorView[];
   npcs: NpcView[];
   tileSprites: Container[];
@@ -187,6 +207,13 @@ interface World {
   enemyRespawnQueue: { id: string; spawnAt: number }[];
   killCount: number; // drives loot seed
   endingSeen: boolean; // flips true on Pact-Bearer kill (acts as one-shot gate)
+  // Hardcore character: chosen at character-creation. permadeath; save slot
+  // deleted on player death. Non-hardcore characters get the normal respawn-
+  // from-save loop. Stored on SaveState so a load restores the flag.
+  hardcore: boolean;
+  // Active save slot — defaults to 1; written/loaded by saveNow/loadSlot.
+  // Pulled out so onPlayerDeath can target the right slot for permadeath.
+  activeSaveSlot: SlotIndex;
   // Active Echo run — populated by the Wyrdkeeper when the player consumes
   // a sigil. Cleared on returning to Whitestone or completing floor 5.
   echoTier: number;    // 0 = no active echo run
@@ -287,6 +314,7 @@ async function main(): Promise<void> {
     tileSprites: [],
     inventory: makeInventory(),
     saveAdapter: makeSaveAdapter(),
+    settings: loadSettings(),
     currentZone: initialZone,
     dungeon,
     grid,
@@ -297,6 +325,8 @@ async function main(): Promise<void> {
     endingSeen: false,
     echoTier: 0,
     echoFloor: 1,
+    hardcore: false,
+    activeSaveSlot: 1,
     hoveringItemId: null,
     playerPath: null,
     playerPathIx: 0,
@@ -314,8 +344,12 @@ async function main(): Promise<void> {
   // Initial zone setup — spawn NPCs (Whitestone) or enemies (Catacombs).
   spawnZoneActors(W, null);
 
-  // Mount Lit panels into #hud. They're hidden until toggled.
-  mountPanels(hud);
+  // Apply persisted accessibility settings before the first frame paints.
+  applyFontScale(W.settings.video.fontScale);
+
+  // Mount Lit panels into #hud. They're hidden until toggled. Returns the
+  // character-creation modal so we can show it on first boot.
+  const charCreateEl = mountPanels(hud);
   // Wire reactive store + intent handlers (equip / unequip / drop / hotbar).
   syncStore(W);
   bindIntentHandlers(W);
@@ -324,6 +358,14 @@ async function main(): Promise<void> {
   bindClickHandler(W);
   bindHoverHandler(W);
   app.ticker.add((tick) => onTick(W, tick.lastTime));
+
+  // First-boot character creation. If any save slot exists we let the player
+  // resume via the dev hooks (no in-game continue UI yet); a fresh install
+  // gets the modal, which writes slot 1 on submit. Failures here shouldn't
+  // brick boot — fall through to the default Furyborn character on error.
+  void firstBootMaybeShowCreation(W, charCreateEl).catch((err) =>
+    console.warn('character-creation check failed:', err),
+  );
 
   updateDebug(W);
 
@@ -492,11 +534,11 @@ async function main(): Promise<void> {
         addItem(W.inventory, item);
         syncStore(W);
       },
-      openPanel(id: 'inventory' | 'character' | 'bind' | 'imbuer' | 'echo-portal'): void {
+      openPanel(id: 'inventory' | 'character' | 'bind' | 'imbuer' | 'echo-portal' | 'settings'): void {
         dispatchPanelToggle({ id, open: true });
       },
       closeAllPanels(): void {
-        for (const id of ['inventory', 'character', 'bind', 'imbuer', 'echo-portal'] as const) {
+        for (const id of ['inventory', 'character', 'bind', 'imbuer', 'echo-portal', 'settings'] as const) {
           dispatchPanelToggle({ id, open: false });
         }
       },
@@ -665,10 +707,12 @@ function executeSkill(W: World, skillId: string, nowMs: number): boolean {
       if (!view.actor.alive) continue;
       if (distanceBetween(player, view.actor) > 1) continue;
       view.actor.hp = Math.max(0, view.actor.hp - damage);
-      flashHit(view, nowMs);
-      const screen = tileToScreen(view.actor.tile.tx, view.actor.tile.ty);
       const killed = view.actor.hp === 0 && view.actor.alive;
-      spawnDamagePopup(W.world, screen.sx, screen.sy, damage, killed, W.app.ticker);
+      if (!W.settings.video.reduceMotion) {
+        flashHit(view, nowMs);
+        const screen = tileToScreen(view.actor.tile.tx, view.actor.tile.ty);
+        spawnDamagePopup(W.world, screen.sx, screen.sy, damage, killed, W.app.ticker);
+      }
       if (killed) {
         view.actor.alive = false;
         view.actor.attackTarget = null;
@@ -810,6 +854,44 @@ function mountNpcView(world: Container, def: NpcDef): NpcView {
 
 // Hub palette = warmer; catacombs = cool blue-grey. Per spec §13:
 // "Per-act color-grade LUT (warm I → cold II → blood III) via ColorMatrixFilter."
+// Build a color-blind correction filter. The matrices below are hue rotations
+// + saturation tweaks tuned to differentiate the rarity colors (blue / gold /
+// burnt-orange / red) for each preset. A real LMS-space transform is the
+// next iteration; this minimal version is good enough for the spec target
+// of "presets exist + are toggleable".
+// Apply the user's font-scale to the document root as a CSS custom
+// property. Panels can read it via `var(--wyrd-font-scale, 1)` and scale
+// their typography. v0.11.0 wires the variable; per-panel adoption can land
+// incrementally without requiring all panels to ship a redesign at once.
+function applyFontScale(scale: number): void {
+  if (typeof document === 'undefined') return;
+  document.documentElement.style.setProperty('--wyrd-font-scale', String(scale));
+}
+
+function buildColorBlindFilter(preset: string): ColorMatrixFilter | null {
+  if (preset === 'none') return null;
+  const f = new ColorMatrixFilter();
+  switch (preset) {
+    case 'deuteranopia':
+      // Pull green channel into blue so red/green readers shift toward
+      // gold/violet — preserves rarity contrast at the cost of natural hue.
+      f.hue(15, false);
+      f.saturate(-0.1, true);
+      break;
+    case 'protanopia':
+      // Subtle warm-cool rotation; reds drift toward orange-amber.
+      f.hue(-12, false);
+      f.saturate(-0.15, true);
+      break;
+    case 'tritanopia':
+      // Blue-yellow shift; sapphire (gem) reads more cyan.
+      f.hue(25, false);
+      f.saturate(-0.05, true);
+      break;
+  }
+  return f;
+}
+
 function applyZoneFilter(world: Container, zoneId: ZoneId): void {
   const f = new ColorMatrixFilter();
   switch (zoneId) {
@@ -846,7 +928,11 @@ function applyZoneFilter(world: Container, zoneId: ZoneId): void {
       f.brightness(0.75, true);
       break;
   }
-  world.filters = [f];
+  // Stack color-blind correction (if any) on top of the zone tint. Reading
+  // the freshest settings here means a settings change re-applies via
+  // applyZoneFilter without needing zone-state in the helper.
+  const cb = buildColorBlindFilter(loadSettings().video.colorBlind);
+  world.filters = cb ? [f, cb] : [f];
 }
 
 // Tear down every tile sprite + actor + NPC in the world container, leaving
@@ -1430,19 +1516,30 @@ function syncStore(W: World): void {
   notifyState();
 }
 
-function mountPanels(hud: HTMLElement): void {
+function mountPanels(hud: HTMLElement): HTMLElement {
   const inventory = document.createElement('wyrd-inventory');
   const character = document.createElement('wyrd-character');
   const bind = document.createElement('wyrd-bind');
   const hotbar = document.createElement('wyrd-hotbar');
   const tracker = document.createElement('wyrd-questtracker');
   const npcDialog = document.createElement('wyrd-npcdialog');
+  const imbuer = document.createElement('wyrd-imbuer');
+  const echoPortal = document.createElement('wyrd-echo-portal');
+  const settings = document.createElement('wyrd-settings');
+  const ending = document.createElement('wyrd-ending');
+  const charCreate = document.createElement('wyrd-character-creation');
   hud.appendChild(inventory);
   hud.appendChild(character);
   hud.appendChild(bind);
   hud.appendChild(hotbar);
   hud.appendChild(tracker);
   hud.appendChild(npcDialog);
+  hud.appendChild(imbuer);
+  hud.appendChild(echoPortal);
+  hud.appendChild(settings);
+  hud.appendChild(ending);
+  hud.appendChild(charCreate);
+  return charCreate;
 }
 
 // Build a SaveState snapshot from the live world. Pure read.
@@ -1461,11 +1558,13 @@ function snapshotSaveState(W: World): SaveState {
     killCount: W.killCount,
     quests: W.quests,
     endingSeen: W.endingSeen,
+    hardcore: W.hardcore,
     ...(W.echoTier > 0 ? { echoTier: W.echoTier, echoFloor: W.echoFloor } : {}),
   };
 }
 
-async function autoSave(W: World, slot: SlotIndex = 1): Promise<void> {
+async function autoSave(W: World, slot: SlotIndex = W.activeSaveSlot): Promise<void> {
+  W.activeSaveSlot = slot;
   const file = buildSaveFile({
     characterName: W.characterName,
     appVersion: APP_VERSION,
@@ -1500,11 +1599,67 @@ async function loadSaveAndApply(W: World, slot: SlotIndex = 1): Promise<boolean>
   W.endingSeen = s.endingSeen;
   W.echoTier = s.echoTier ?? 0;
   W.echoFloor = s.echoFloor ?? 1;
+  W.hardcore = s.hardcore;
+  W.activeSaveSlot = slot;
   W.characterName = file.characterName;
   W.saveCreatedAt = file.createdAt;
   W.hpBar.set(W.player.actor.hp, W.player.actor.derivedStats.maxHp);
   syncStore(W);
   return true;
+}
+
+// First-boot gate. If the SaveAdapter reports zero slots in use, show the
+// creation modal; otherwise let the dev hooks (or future Continue UI) handle
+// loading. The modal listens for its own submit event and closes itself.
+async function firstBootMaybeShowCreation(
+  W: World,
+  modal: HTMLElement,
+): Promise<void> {
+  const slots = await W.saveAdapter.list();
+  if (slots.length > 0) return;
+  modal.setAttribute('open', '');
+  // The listener is registered once; the modal hides itself after submit.
+  window.addEventListener(
+    CHARACTER_CREATE_EVENT,
+    (e: Event) => {
+      const detail = (e as CustomEvent<CharacterCreateDetail>).detail;
+      if (!detail) return;
+      applyCharacterCreation(W, detail);
+      modal.removeAttribute('open');
+    },
+    { once: true },
+  );
+}
+
+// Apply the modal's choice to the live world: swap class via the same in-place
+// path the dev hook uses, set name + hardcore, then write the initial save so
+// the slot exists before the player takes a step. Sealwarden is allowed here
+// only if its localStorage unlock flag is set (the modal already enforces this
+// in the UI, but we re-check defensively).
+function applyCharacterCreation(W: World, detail: CharacterCreateDetail): void {
+  if (detail.classId === 'sealwarden') {
+    const unlocked = (() => {
+      try { return localStorage.getItem(SEALWARDEN_UNLOCK_KEY) === '1'; }
+      catch { return false; }
+    })();
+    if (!unlocked) {
+      console.warn('Sealwarden requested at creation but unlock flag missing.');
+      return;
+    }
+  }
+  W.characterName = detail.characterName;
+  W.hardcore = detail.hardcore;
+  W.saveCreatedAt = Date.now();
+  // Class swap rebuilds baseline stats + resets resource. The dev hook on
+  // window.__wyrdloom.dev.setClass is the same code path; reach through it
+  // so we don't duplicate the in-place mutation logic.
+  const dev = (window as unknown as {
+    __wyrdloom?: { dev?: { setClass?: (id: ClassId) => boolean } };
+  }).__wyrdloom?.dev;
+  if (dev?.setClass) dev.setClass(detail.classId);
+  void autoSave(W, 1).catch((err) =>
+    console.error('autoSave (character creation) failed:', err),
+  );
 }
 
 function bindIntentHandlers(W: World): void {
@@ -1534,7 +1689,21 @@ function bindIntentHandlers(W: World): void {
   });
   window.addEventListener('wyrdloom:ending-dismiss', () => {
     W.endingSeen = true;
+    // Account-wide Sealwarden unlock per spec §4.2 — the flag survives save
+    // deletion, so a second character can pick Sealwarden at creation. The
+    // current character's per-save endingSeen still gates legacy in-game
+    // dev-hook setClass swaps, but the modal reads this localStorage flag.
+    try { localStorage.setItem(SEALWARDEN_UNLOCK_KEY, '1'); } catch {
+      // localStorage can throw in private-browsing modes; non-fatal.
+    }
     void autoSave(W).catch((err) => console.error('autoSave (post-ending) failed:', err));
+  });
+  // Settings live in localStorage; re-apply runtime side effects whenever the
+  // user changes a setting in the panel.
+  window.addEventListener(SETTINGS_CHANGED_EVENT, () => {
+    W.settings = loadSettings();
+    applyZoneFilter(W.world, W.currentZone.id);
+    applyFontScale(W.settings.video.fontScale);
   });
   // Hotbar trigger — v0.7.0 wires the Furyborn kit. Cleave is implicit
   // (left-click), other skills fire here from key 1-4 or hotbar click.
@@ -1552,36 +1721,51 @@ function bindKeyboard(W: World): void {
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
 
-    const key = e.key.toLowerCase();
-    if (key === 'i') {
-      dispatchPanelToggle({ id: 'inventory' });
-      e.preventDefault();
-    } else if (key === 'c') {
-      dispatchPanelToggle({ id: 'character' });
-      e.preventDefault();
-    } else if (key === 'q') {
+    // Q stays hardcoded (quest tracker toggle); Escape stays hardcoded (close-
+    // all). Everything else flows through the settings keybind map so the
+    // user can rebind in the Settings panel.
+    if (e.key.toLowerCase() === 'q') {
       window.dispatchEvent(new CustomEvent(QUEST_TOGGLE_EVENT));
       e.preventDefault();
-    } else if (key === 's') {
-      // Per spec §8: manual save in hubs only (anti-save-scum).
-      if (W.currentZone.id === 'whitestone') {
-        void autoSave(W).catch((err) => console.error('manual save failed:', err));
-      }
-      e.preventDefault();
-    } else if (key === 'escape') {
-      const ids: PanelId[] = ['inventory', 'character', 'bind', 'imbuer', 'echo-portal'];
+      return;
+    }
+    if (e.code === 'Escape') {
+      const ids: PanelId[] = ['inventory', 'character', 'bind', 'imbuer', 'echo-portal', 'settings'];
       for (const id of ids) dispatchPanelToggle({ id, open: false });
       window.dispatchEvent(new CustomEvent('wyrdloom:npc-dialog-close'));
       e.preventDefault();
-    } else if (['1', '2', '3', '4'].includes(key)) {
-      const slot = Number(key) - 1;
-      const binding = gameState.hotbar[slot];
-      if (binding) {
-        window.dispatchEvent(
-          new CustomEvent(SKILL_TRIGGER_EVENT, {
-            detail: { slot, skillId: binding.skillId },
-          }),
-        );
+      return;
+    }
+
+    const action = actionForCode(W.settings, e.code);
+    if (!action) return;
+    e.preventDefault();
+    switch (action) {
+      case 'open-inventory':   dispatchPanelToggle({ id: 'inventory' }); break;
+      case 'open-character':   dispatchPanelToggle({ id: 'character' }); break;
+      case 'open-bind':        dispatchPanelToggle({ id: 'bind' }); break;
+      case 'open-imbuer':      dispatchPanelToggle({ id: 'imbuer' }); break;
+      case 'open-echo-portal': dispatchPanelToggle({ id: 'echo-portal' }); break;
+      case 'open-settings':    dispatchPanelToggle({ id: 'settings' }); break;
+      case 'manual-save':
+        if (W.currentZone.id === 'whitestone') {
+          void autoSave(W).catch((err) => console.error('manual save failed:', err));
+        }
+        break;
+      case 'skill-1':
+      case 'skill-2':
+      case 'skill-3':
+      case 'skill-4': {
+        const slot = Number(action.slice(-1)) - 1;
+        const binding = gameState.hotbar[slot];
+        if (binding) {
+          window.dispatchEvent(
+            new CustomEvent(SKILL_TRIGGER_EVENT, {
+              detail: { slot, skillId: binding.skillId },
+            }),
+          );
+        }
+        break;
       }
     }
   });
@@ -1642,9 +1826,11 @@ function onTick(W: World, nowMs: number): void {
     const result = tickEnemy(view.actor, W.player.actor, nowMs, W.grid);
     if (result.moved) placeActorNode(view.node, view.actor);
     if (result.damage) {
-      flashHit(W.player, nowMs);
-      const screen = tileToScreen(W.player.actor.tile.tx, W.player.actor.tile.ty);
-      spawnDamagePopup(W.world, screen.sx, screen.sy, result.damage.amount, false, W.app.ticker);
+      if (!W.settings.video.reduceMotion) {
+        flashHit(W.player, nowMs);
+        const screen = tileToScreen(W.player.actor.tile.tx, W.player.actor.tile.ty);
+        spawnDamagePopup(W.world, screen.sx, screen.sy, result.damage.amount, false, W.app.ticker);
+      }
       W.hpBar.set(W.player.actor.hp, W.player.actor.stats.maxHp);
       if (result.damage.killed) onPlayerDeath(W, nowMs);
     }
@@ -1672,9 +1858,11 @@ function tickPlayer(W: World, nowMs: number): void {
     } else if (distanceBetween(player, targetView.actor) <= player.stats.atkRange) {
       if (canAttack(player, targetView.actor, nowMs)) {
         const ev = performAttack(player, targetView.actor, nowMs);
-        flashHit(targetView, nowMs);
-        const screen = tileToScreen(targetView.actor.tile.tx, targetView.actor.tile.ty);
-        spawnDamagePopup(W.world, screen.sx, screen.sy, ev.amount, ev.killed, W.app.ticker);
+        if (!W.settings.video.reduceMotion) {
+          flashHit(targetView, nowMs);
+          const screen = tileToScreen(targetView.actor.tile.tx, targetView.actor.tile.ty);
+          spawnDamagePopup(W.world, screen.sx, screen.sy, ev.amount, ev.killed, W.app.ticker);
+        }
         // Cleave: every landed hit feeds rage. Skill activations skip this.
         gainResourceOnHit(player);
         if (ev.killed) {
@@ -1748,6 +1936,16 @@ function onPlayerDeath(W: World, nowMs: number): void {
   W.hpBar.set(0, W.player.actor.stats.maxHp);
   W.hpBar.setDead(true);
   W.player.node.visible = false;
+  // Hardcore mode (spec §6 line 227 / spec line 173): permadeath, save
+  // deleted on death. Active save slot is wiped; the next reload will land
+  // on character creation. Non-hardcore characters use the normal respawn-
+  // from-save loop in onTick.
+  if (W.hardcore) {
+    void W.saveAdapter
+      .remove(W.activeSaveSlot)
+      .then(() => console.warn(`Hardcore: save slot ${W.activeSaveSlot} deleted`))
+      .catch((err) => console.error('Hardcore save delete failed:', err));
+  }
 }
 
 function flashHit(v: ActorView, nowMs: number): void {

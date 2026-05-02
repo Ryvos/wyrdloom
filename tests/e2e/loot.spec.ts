@@ -1,7 +1,7 @@
 /// <reference path="../types/wyrdloom-global.d.ts" />
 import { test, expect } from '@playwright/test';
 
-const VERSION = '0.10.0';
+const VERSION = '0.11.0';
 // Seed handpicked from offline probe — yields a magic Honed Iron Sword of Malice
 // (weapon, baseDamage 10, +Honed atk_flat, +of-Malice atk_flat).
 const WEAPON_SEED = 'weapon-seed-17';

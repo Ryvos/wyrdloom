@@ -33,7 +33,9 @@ import type { ClassId } from '../types/class';
 //   5 (v0.10.0) — adds `echoTier?: number` + `echoFloor?: number` for
 //                 active Echo runs. Pre-v0.10.0 saves get omitted fields
 //                 (no active run); the migrator is a version-stamp bump.
-export const SAVE_SCHEMA_VERSION = 5;
+//   6 (v0.11.0) — adds `hardcore: boolean` (permadeath flag, chosen at
+//                 character creation). Pre-v0.11.0 saves migrate to false.
+export const SAVE_SCHEMA_VERSION = 6;
 
 // Slots are 1..MAX_SLOTS (slot 0 reserved for "current/auto" if we ever
 // split auto vs manual saves; v0.6.0 ships 5 manual slots only).
@@ -75,6 +77,10 @@ export interface SaveState {
   // mid-run. Tier ≥ 1 + floor 1..5 means resume into the Echo on load.
   readonly echoTier?: number;
   readonly echoFloor?: number;
+  // v0.11.0+: hardcore (permadeath) flag. Set at character creation; on
+  // player death, the save slot is deleted instead of respawning. Legacy
+  // saves migrate to false.
+  readonly hardcore: boolean;
 }
 
 export type SlotIndex = 1 | 2 | 3 | 4 | 5;
@@ -90,6 +96,7 @@ export interface SlotSummary {
   readonly zoneId: ZoneId;
   readonly updatedAt: number;
   readonly version: string;
+  readonly hardcore: boolean;
 }
 
 export interface SaveAdapter {
@@ -134,6 +141,16 @@ export const MIGRATIONS: Record<number, (s: AnyState) => AnyState> = {
   // means "no active Echo run" — the right default for v0.9.0 saves.
   // Version-stamp bump only.
   4: (file): AnyState => ({ ...file, schemaVersion: 5 }),
+  // v0.10.0 → v0.11.0: state.hardcore is required. Existing characters
+  // never opted in, so legacy saves migrate to hardcore=false.
+  5: (file): AnyState => {
+    const oldState = (file.state as AnyState) ?? {};
+    return {
+      ...file,
+      schemaVersion: 6,
+      state: { ...oldState, hardcore: false },
+    };
+  },
 };
 
 // Apply migrations until current version is reached, or throw on unknown.

@@ -53,6 +53,8 @@ export function notifyState(): void {
 export const INTENT_EQUIP_EVENT = 'wyrdloom:intent-equip';
 export const INTENT_UNEQUIP_EVENT = 'wyrdloom:intent-unequip';
 export const INTENT_DROP_EVENT = 'wyrdloom:intent-drop';
+export const INTENT_IMBUE_EVENT = 'wyrdloom:intent-imbue';
+export const INTENT_SOCKET_EVENT = 'wyrdloom:intent-socket';
 
 export interface EquipIntent {
   readonly uid: string; // item uid in inventory
@@ -62,4 +64,12 @@ export interface UnequipIntent {
 }
 export interface DropIntent {
   readonly uid: string; // item uid in inventory
+}
+export interface ImbueIntent {
+  readonly uids: ReadonlyArray<string>; // exactly 3 magic same-slot uids
+}
+export interface SocketIntent {
+  readonly gemUid: string;        // bag-wrapped gem to consume
+  readonly targetUid: string;     // item with the empty socket (bag or equipped)
+  readonly socketIx?: number;     // optional explicit socket index
 }

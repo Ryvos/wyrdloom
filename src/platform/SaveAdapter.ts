@@ -23,7 +23,12 @@ import type { ClassId } from '../types/class';
 //   2 (v0.7.0) — adds classId + resource. Legacy v1 saves migrate to a
 //                Furyborn character with empty resource (the only class that
 //                exists in v0.7.0).
-export const SAVE_SCHEMA_VERSION = 2;
+//   3 (v0.8.0) — items may now carry `unique`, `sockets`, and `gem`.
+//                These are all optional fields, so v2 saves load shape-clean
+//                and the migrator is a version-stamp bump only. The bump
+//                serves as a "writer understood v0.8.0 fields" marker so a
+//                future shape-breaking change can branch on schemaVersion.
+export const SAVE_SCHEMA_VERSION = 3;
 
 // Slots are 1..MAX_SLOTS (slot 0 reserved for "current/auto" if we ever
 // split auto vs manual saves; v0.6.0 ships 5 manual slots only).
@@ -98,6 +103,11 @@ export const MIGRATIONS: Record<number, (s: AnyState) => AnyState> = {
       state: { ...oldState, classId: 'furyborn', resource: 0 },
     };
   },
+  // v0.7.0 → v0.8.0: items gained optional unique/sockets/gem fields. No
+  // legacy-state rewrite is needed — absence of the fields just means the
+  // item was rolled before v0.8.0 and has no socket/unique data. We bump
+  // the version so the loader can branch on it later.
+  2: (file): AnyState => ({ ...file, schemaVersion: 3 }),
 };
 
 // Apply migrations until current version is reached, or throw on unknown.

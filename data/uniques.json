@@ -1,0 +1,130 @@
+{
+  "_comment": "20 unique-tier items. Each has a fixed flavor + curated affixes (no min/max roll — values are deterministic). Some have bonus sockets above the base. Distribution: 7 weapons, 4 head, 4 chest, 5 ring — slightly weapon/ring-tilted because that's where unique design feels most meaningful for Furyborn (atk-driven).",
+  "uniques": [
+    { "id": "u-fang-of-the-cub", "name": "Fang of the Cub", "baseId": "rusty-dagger", "ilvl": 1, "flavor": "A child's first claw, kept too long.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 4,  "affixId": "u-fang-cub-atk", "affixName": "+4 to Attack" },
+        { "modType": "hp_flat",   "value": 12, "affixId": "u-fang-cub-hp",  "affixName": "+12 Max HP" }
+      ], "bonusSockets": 1 },
+
+    { "id": "u-honedwhisper", "name": "Honedwhisper", "baseId": "iron-sword", "ilvl": 5, "flavor": "It speaks only when it cuts.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 8,  "affixId": "u-hw-atk",   "affixName": "+8 to Attack" },
+        { "modType": "atk_flat",  "value": 4,  "affixId": "u-hw-atk2",  "affixName": "+4 to Attack" }
+      ], "bonusSockets": 0 },
+
+    { "id": "u-bishopcleaver", "name": "Bishopcleaver", "baseId": "steel-blade", "ilvl": 12, "flavor": "Stained where the holy man fell.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 14, "affixId": "u-bc-atk",  "affixName": "+14 to Attack" },
+        { "modType": "atk_flat",  "value": 8,  "affixId": "u-bc-atk2", "affixName": "+8 to Attack" },
+        { "modType": "hp_flat",   "value": 18, "affixId": "u-bc-hp",   "affixName": "+18 Max HP" }
+      ], "bonusSockets": 2 },
+
+    { "id": "u-gravecaller", "name": "Gravecaller", "baseId": "steel-blade", "ilvl": 14, "flavor": "Each cut answers a thousand silent mouths.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 18, "affixId": "u-gc-atk",  "affixName": "+18 to Attack" },
+        { "modType": "hp_flat",   "value": 30, "affixId": "u-gc-hp",   "affixName": "+30 Max HP" }
+      ], "bonusSockets": 1 },
+
+    { "id": "u-vyltooth", "name": "Vyltooth", "baseId": "steel-blade", "ilvl": 16, "flavor": "Pried from the worm-mother's lower jaw.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 22, "affixId": "u-vt-atk",   "affixName": "+22 to Attack" },
+        { "modType": "atk_flat",  "value": 10, "affixId": "u-vt-atk2",  "affixName": "+10 to Attack" },
+        { "modType": "armor_flat","value": 6,  "affixId": "u-vt-armor", "affixName": "+6 Armor" }
+      ], "bonusSockets": 3 },
+
+    { "id": "u-rusted-promise", "name": "Rusted Promise", "baseId": "rusty-dagger", "ilvl": 1, "flavor": "He said he'd come back. He didn't.",
+      "fixedAffixes": [
+        { "modType": "hp_flat",   "value": 20, "affixId": "u-rp-hp",  "affixName": "+20 Max HP" }
+      ], "bonusSockets": 2 },
+
+    { "id": "u-thrice-folded", "name": "Thrice-Folded", "baseId": "iron-sword", "ilvl": 6, "flavor": "Folded by smiths, by widows, by liars.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 12, "affixId": "u-tf-atk",  "affixName": "+12 to Attack" },
+        { "modType": "armor_flat","value": 3,  "affixId": "u-tf-armor","affixName": "+3 Armor" }
+      ], "bonusSockets": 1 },
+
+    { "id": "u-sallet-of-the-hollow", "name": "Sallet of the Hollow", "baseId": "leather-cap", "ilvl": 2, "flavor": "Worn by something that no longer needs eyes.",
+      "fixedAffixes": [
+        { "modType": "hp_flat",   "value": 18, "affixId": "u-sh-hp",    "affixName": "+18 Max HP" },
+        { "modType": "armor_flat","value": 3,  "affixId": "u-sh-armor", "affixName": "+3 Armor" }
+      ], "bonusSockets": 1 },
+
+    { "id": "u-bishops-mitre", "name": "Bishop's Mitre", "baseId": "iron-helm", "ilvl": 8, "flavor": "Light still falls through the gap.",
+      "fixedAffixes": [
+        { "modType": "hp_flat",   "value": 28, "affixId": "u-bm-hp",    "affixName": "+28 Max HP" },
+        { "modType": "armor_flat","value": 5,  "affixId": "u-bm-armor", "affixName": "+5 Armor" },
+        { "modType": "atk_flat",  "value": 4,  "affixId": "u-bm-atk",   "affixName": "+4 to Attack" }
+      ], "bonusSockets": 2 },
+
+    { "id": "u-frost-wreath", "name": "Frost Wreath", "baseId": "iron-helm", "ilvl": 10, "flavor": "It cools the brain enough to think clearly.",
+      "fixedAffixes": [
+        { "modType": "hp_flat",   "value": 36, "affixId": "u-fw-hp",    "affixName": "+36 Max HP" },
+        { "modType": "armor_flat","value": 6,  "affixId": "u-fw-armor", "affixName": "+6 Armor" }
+      ], "bonusSockets": 1 },
+
+    { "id": "u-deepcrown", "name": "Deepcrown", "baseId": "winged-helm", "ilvl": 14, "flavor": "Deeper than the Catacombs reach.",
+      "fixedAffixes": [
+        { "modType": "hp_flat",   "value": 50, "affixId": "u-dc-hp",    "affixName": "+50 Max HP" },
+        { "modType": "atk_flat",  "value": 8,  "affixId": "u-dc-atk",   "affixName": "+8 to Attack" },
+        { "modType": "armor_flat","value": 8,  "affixId": "u-dc-armor", "affixName": "+8 Armor" }
+      ], "bonusSockets": 3 },
+
+    { "id": "u-skin-of-the-stone", "name": "Skin of the Stone", "baseId": "padded-tunic", "ilvl": 2, "flavor": "Rough enough to draw blood from the wearer.",
+      "fixedAffixes": [
+        { "modType": "armor_flat","value": 6,  "affixId": "u-sotS-armor", "affixName": "+6 Armor" },
+        { "modType": "hp_flat",   "value": 14, "affixId": "u-sotS-hp",    "affixName": "+14 Max HP" }
+      ], "bonusSockets": 1 },
+
+    { "id": "u-coat-of-many-vows", "name": "Coat of Many Vows", "baseId": "chain-hauberk", "ilvl": 7, "flavor": "Each ring a promise broken.",
+      "fixedAffixes": [
+        { "modType": "armor_flat","value": 12, "affixId": "u-cmv-armor", "affixName": "+12 Armor" },
+        { "modType": "hp_flat",   "value": 22, "affixId": "u-cmv-hp",    "affixName": "+22 Max HP" }
+      ], "bonusSockets": 2 },
+
+    { "id": "u-bishops-vestments", "name": "Bishop's Vestments", "baseId": "chain-hauberk", "ilvl": 12, "flavor": "Patched where the spear went through.",
+      "fixedAffixes": [
+        { "modType": "armor_flat","value": 14, "affixId": "u-bv-armor", "affixName": "+14 Armor" },
+        { "modType": "hp_flat",   "value": 40, "affixId": "u-bv-hp",    "affixName": "+40 Max HP" },
+        { "modType": "atk_flat",  "value": 6,  "affixId": "u-bv-atk",   "affixName": "+6 to Attack" }
+      ], "bonusSockets": 2 },
+
+    { "id": "u-vyl-carapace", "name": "Vyl Carapace", "baseId": "plate-cuirass", "ilvl": 16, "flavor": "Worm-chitin, still warm.",
+      "fixedAffixes": [
+        { "modType": "armor_flat","value": 22, "affixId": "u-vc-armor", "affixName": "+22 Armor" },
+        { "modType": "hp_flat",   "value": 60, "affixId": "u-vc-hp",    "affixName": "+60 Max HP" }
+      ], "bonusSockets": 3 },
+
+    { "id": "u-tin-lullaby", "name": "Tin Lullaby", "baseId": "tin-band", "ilvl": 1, "flavor": "Hummed once. Now silent.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 3, "affixId": "u-tl-atk", "affixName": "+3 to Attack" },
+        { "modType": "hp_flat",   "value": 8, "affixId": "u-tl-hp",  "affixName": "+8 Max HP" }
+      ], "bonusSockets": 1 },
+
+    { "id": "u-silver-of-malice", "name": "Silver of Malice", "baseId": "silver-loop", "ilvl": 6, "flavor": "Brighter the more it cuts.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 8,  "affixId": "u-som-atk", "affixName": "+8 to Attack" },
+        { "modType": "hp_flat",   "value": 16, "affixId": "u-som-hp",  "affixName": "+16 Max HP" }
+      ], "bonusSockets": 1 },
+
+    { "id": "u-coil-of-the-worm", "name": "Coil of the Worm", "baseId": "silver-loop", "ilvl": 10, "flavor": "Wraps the finger like it's hungry.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 12, "affixId": "u-cow-atk",   "affixName": "+12 to Attack" },
+        { "modType": "armor_flat","value": 4,  "affixId": "u-cow-armor", "affixName": "+4 Armor" }
+      ], "bonusSockets": 2 },
+
+    { "id": "u-gold-of-the-bishop", "name": "Gold of the Bishop", "baseId": "gold-signet", "ilvl": 13, "flavor": "Faith melts. Gold doesn't.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 16, "affixId": "u-gob-atk", "affixName": "+16 to Attack" },
+        { "modType": "hp_flat",   "value": 24, "affixId": "u-gob-hp",  "affixName": "+24 Max HP" },
+        { "modType": "armor_flat","value": 4,  "affixId": "u-gob-armor","affixName": "+4 Armor" }
+      ], "bonusSockets": 2 },
+
+    { "id": "u-wyrdknot", "name": "Wyrdknot", "baseId": "gold-signet", "ilvl": 15, "flavor": "The relic the catacombs whispered of.",
+      "fixedAffixes": [
+        { "modType": "atk_flat",  "value": 20, "affixId": "u-wk-atk",  "affixName": "+20 to Attack" },
+        { "modType": "hp_flat",   "value": 35, "affixId": "u-wk-hp",   "affixName": "+35 Max HP" },
+        { "modType": "armor_flat","value": 6,  "affixId": "u-wk-armor","affixName": "+6 Armor" }
+      ], "bonusSockets": 3 }
+  ]
+}

@@ -10,7 +10,7 @@
 import { LitElement, css, html, type CSSResultGroup, type PropertyValues } from 'lit';
 import { property } from 'lit/decorators.js';
 
-export type PanelId = 'inventory' | 'character' | 'bind';
+export type PanelId = 'inventory' | 'character' | 'bind' | 'imbuer';
 
 export interface PanelToggleDetail {
   readonly id: PanelId;

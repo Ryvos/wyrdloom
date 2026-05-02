@@ -20,9 +20,12 @@ export const SLOTS = ['weapon', 'head', 'chest', 'ring'] as const;
 export type Slot = (typeof SLOTS)[number];
 
 // Modifiers an affix can grant. Add a new variant → every switch lights up red.
+// v0.8.0 adds `armor_flat` — used by Emerald gems (no affix in data/affixes.json
+// uses it yet; that gap is fine — affix data is authored, gems are computed).
 export type ItemMod =
   | { type: 'atk_flat'; min: number; max: number }
-  | { type: 'hp_flat'; min: number; max: number };
+  | { type: 'hp_flat'; min: number; max: number }
+  | { type: 'armor_flat'; min: number; max: number };
 
 export type ItemModType = ItemMod['type'];
 
@@ -56,6 +59,9 @@ export interface BaseItem {
 }
 
 // A rolled, persistable item instance.
+//
+// `sockets` is mutable on purpose — slotting a gem replaces a `null` entry
+// with a Gem. Length of the array == socket count baked at roll time.
 export interface Item {
   readonly uid: string;
   readonly baseId: string;
@@ -66,6 +72,64 @@ export interface Item {
   readonly baseDamage?: number;
   readonly baseArmor?: number;
   readonly affixes: ReadonlyArray<RolledAffix>;
+  readonly unique?: { readonly id: string; readonly flavor: string };
+  sockets?: Array<Gem | null>;
+  // When set, this Item is a bag-only wrapper for a loose Gem awaiting
+  // socketing. `affixes` is empty, base damage/armor are absent, and
+  // equip flow refuses it. Slot is a placeholder ('ring' is conventional).
+  readonly gem?: Gem;
+}
+
+// Gems — slot into items' empty sockets, grant a flat stat. v0.8.0 ships:
+//   5 kinds × 5 quality tiers = 25 gems.
+//   Quality scales the granted stat; kind picks the modType.
+//
+// Gems are also bag items (`asBagItem`) so they can be picked up and stored
+// before being socketed. Inventory holds them as Items with `gem: GemRef`
+// and no affixes (treated as bag-only).
+
+export const GEM_KINDS = ['ruby', 'sapphire', 'emerald', 'topaz', 'diamond'] as const;
+export type GemKind = (typeof GEM_KINDS)[number];
+
+export const GEM_QUALITIES = ['chipped', 'flawed', 'normal', 'flawless', 'perfect'] as const;
+export type GemQuality = (typeof GEM_QUALITIES)[number];
+
+export interface GemDef {
+  readonly id: string;       // e.g. 'ruby-flawless'
+  readonly kind: GemKind;
+  readonly quality: GemQuality;
+  readonly name: string;     // "Flawless Ruby"
+  readonly modType: ItemModType;
+  readonly value: number;    // flat amount granted when socketed
+}
+
+// A persistable gem instance. Lives in inventory before socketing; lives
+// inside `Item.sockets` after.
+export interface Gem {
+  readonly uid: string;
+  readonly defId: string;    // FK to GemDef.id
+  readonly kind: GemKind;
+  readonly quality: GemQuality;
+  readonly name: string;
+  readonly modType: ItemModType;
+  readonly value: number;
+}
+
+// Unique-tier item definition. Fixed affixes (deterministic values, no
+// min/max roll). Optionally adds bonus sockets above the base.
+export interface UniqueDef {
+  readonly id: string;
+  readonly name: string;
+  readonly baseId: string;
+  readonly ilvl: number;
+  readonly flavor: string;          // shown in tooltip in italic
+  readonly fixedAffixes: ReadonlyArray<{
+    readonly modType: ItemModType;
+    readonly value: number;
+    readonly affixId: string;       // human-readable id, e.g. 'unique-cleave-rage'
+    readonly affixName: string;     // tooltip line
+  }>;
+  readonly bonusSockets?: number;   // overrides socket count when present
 }
 
 // JSON file shapes — match data/affixes.json + data/items.json exactly.
@@ -76,4 +140,12 @@ export interface AffixFile {
 
 export interface ItemFile {
   readonly bases: ReadonlyArray<BaseItem>;
+}
+
+export interface GemFile {
+  readonly gems: ReadonlyArray<GemDef>;
+}
+
+export interface UniqueFile {
+  readonly uniques: ReadonlyArray<UniqueDef>;
 }

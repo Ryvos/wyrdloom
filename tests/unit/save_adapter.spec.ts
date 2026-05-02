@@ -34,8 +34,8 @@ function fakeState(): SaveState {
 }
 
 describe('SaveAdapter', () => {
-  it('schema version is 2 in v0.7.0', () => {
-    expect(SAVE_SCHEMA_VERSION).toBe(2);
+  it('schema version is 3 in v0.8.0', () => {
+    expect(SAVE_SCHEMA_VERSION).toBe(3);
   });
 
   it('5 character slots, 1-indexed', () => {
@@ -85,11 +85,11 @@ describe('SaveAdapter', () => {
     expect(() => migrate(file)).toThrow(/migrator from schema 0/);
   });
 
-  it('MIGRATIONS table contains the 1→2 entry in v0.7.0', () => {
-    expect(Object.keys(MIGRATIONS)).toEqual(['1']);
+  it('MIGRATIONS table contains 1→2 and 2→3 entries in v0.8.0', () => {
+    expect(Object.keys(MIGRATIONS).sort()).toEqual(['1', '2']);
   });
 
-  it('migrate() upgrades a v1 save to v2 with Furyborn defaults', () => {
+  it('migrate() upgrades a v1 save through v2 to v3 with Furyborn defaults', () => {
     // v0.6.0-shaped save (no classId, no resource).
     const v1State = {
       playerHp: 100,
@@ -110,16 +110,33 @@ describe('SaveAdapter', () => {
       characterName: 'Legacy',
       version: '0.6.0',
       // The migrator treats `state` opaquely; we cast just to satisfy the
-      // SaveFile type, which expects the v2 shape.
+      // SaveFile type, which expects the latest shape.
       state: v1State as unknown as SaveState,
     };
     const migrated = migrate(file);
-    expect(migrated.schemaVersion).toBe(2);
+    expect(migrated.schemaVersion).toBe(SAVE_SCHEMA_VERSION);
     expect(migrated.state.classId).toBe('furyborn');
     expect(migrated.state.resource).toBe(0);
     // Legacy fields preserved.
     expect(migrated.state.zoneId).toBe('whitestone');
     expect(migrated.state.killCount).toBe(0);
+  });
+
+  it('migrate() upgrades a v2 save to v3 (no shape change)', () => {
+    const v2State: SaveState = fakeState();
+    const file: SaveFile = {
+      schemaVersion: 2,
+      createdAt: 0,
+      updatedAt: 0,
+      characterName: 'Pre-Imbuer',
+      version: '0.7.0',
+      state: v2State,
+    };
+    const migrated = migrate(file);
+    expect(migrated.schemaVersion).toBe(3);
+    // State payload is preserved unchanged — sockets/gems/uniques are all
+    // optional fields, so absence is the v2 default.
+    expect(migrated.state).toEqual(v2State);
   });
 
   it('buildSaveFile stamps schema + timestamps', () => {

@@ -31,7 +31,7 @@ export const NPC_DIALOG: Record<NpcKind, { greeting: string; teaser: string }> =
   },
   imbuer: {
     greeting: 'Imbuer',
-    teaser: "Crafting recipes arrive in v0.8.0 with sockets and gems.",
+    teaser: 'Three magic trinkets become a rare. Empty sockets take gems.',
   },
   stash: {
     greeting: 'Stash-keeper',

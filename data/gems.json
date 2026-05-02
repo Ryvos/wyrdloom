@@ -1,0 +1,34 @@
+{
+  "_comment": "5 gem kinds × 5 quality tiers. Ruby/Sapphire/Emerald are the standard stat triplet (atk/hp/armor). Topaz + Diamond are exotic atk/hp variants with steeper scaling — their drop weighting in loot.ts is lower so they're meaningfully rarer.",
+  "gems": [
+    { "id": "ruby-chipped",     "kind": "ruby",     "quality": "chipped",  "name": "Chipped Ruby",     "modType": "atk_flat",   "value": 2 },
+    { "id": "ruby-flawed",      "kind": "ruby",     "quality": "flawed",   "name": "Flawed Ruby",      "modType": "atk_flat",   "value": 4 },
+    { "id": "ruby-normal",      "kind": "ruby",     "quality": "normal",   "name": "Ruby",             "modType": "atk_flat",   "value": 8 },
+    { "id": "ruby-flawless",    "kind": "ruby",     "quality": "flawless", "name": "Flawless Ruby",    "modType": "atk_flat",   "value": 16 },
+    { "id": "ruby-perfect",     "kind": "ruby",     "quality": "perfect",  "name": "Perfect Ruby",     "modType": "atk_flat",   "value": 32 },
+
+    { "id": "sapphire-chipped", "kind": "sapphire", "quality": "chipped",  "name": "Chipped Sapphire", "modType": "hp_flat",    "value": 4 },
+    { "id": "sapphire-flawed",  "kind": "sapphire", "quality": "flawed",   "name": "Flawed Sapphire",  "modType": "hp_flat",    "value": 8 },
+    { "id": "sapphire-normal",  "kind": "sapphire", "quality": "normal",   "name": "Sapphire",         "modType": "hp_flat",    "value": 16 },
+    { "id": "sapphire-flawless","kind": "sapphire", "quality": "flawless", "name": "Flawless Sapphire","modType": "hp_flat",    "value": 32 },
+    { "id": "sapphire-perfect", "kind": "sapphire", "quality": "perfect",  "name": "Perfect Sapphire", "modType": "hp_flat",    "value": 64 },
+
+    { "id": "emerald-chipped",  "kind": "emerald",  "quality": "chipped",  "name": "Chipped Emerald",  "modType": "armor_flat", "value": 1 },
+    { "id": "emerald-flawed",   "kind": "emerald",  "quality": "flawed",   "name": "Flawed Emerald",   "modType": "armor_flat", "value": 2 },
+    { "id": "emerald-normal",   "kind": "emerald",  "quality": "normal",   "name": "Emerald",          "modType": "armor_flat", "value": 4 },
+    { "id": "emerald-flawless", "kind": "emerald",  "quality": "flawless", "name": "Flawless Emerald", "modType": "armor_flat", "value": 8 },
+    { "id": "emerald-perfect",  "kind": "emerald",  "quality": "perfect",  "name": "Perfect Emerald",  "modType": "armor_flat", "value": 16 },
+
+    { "id": "topaz-chipped",    "kind": "topaz",    "quality": "chipped",  "name": "Chipped Topaz",    "modType": "atk_flat",   "value": 3 },
+    { "id": "topaz-flawed",     "kind": "topaz",    "quality": "flawed",   "name": "Flawed Topaz",     "modType": "atk_flat",   "value": 6 },
+    { "id": "topaz-normal",     "kind": "topaz",    "quality": "normal",   "name": "Topaz",            "modType": "atk_flat",   "value": 12 },
+    { "id": "topaz-flawless",   "kind": "topaz",    "quality": "flawless", "name": "Flawless Topaz",   "modType": "atk_flat",   "value": 24 },
+    { "id": "topaz-perfect",    "kind": "topaz",    "quality": "perfect",  "name": "Perfect Topaz",    "modType": "atk_flat",   "value": 48 },
+
+    { "id": "diamond-chipped",  "kind": "diamond",  "quality": "chipped",  "name": "Chipped Diamond",  "modType": "hp_flat",    "value": 6 },
+    { "id": "diamond-flawed",   "kind": "diamond",  "quality": "flawed",   "name": "Flawed Diamond",   "modType": "hp_flat",    "value": 12 },
+    { "id": "diamond-normal",   "kind": "diamond",  "quality": "normal",   "name": "Diamond",          "modType": "hp_flat",    "value": 24 },
+    { "id": "diamond-flawless", "kind": "diamond",  "quality": "flawless", "name": "Flawless Diamond", "modType": "hp_flat",    "value": 48 },
+    { "id": "diamond-perfect",  "kind": "diamond",  "quality": "perfect",  "name": "Perfect Diamond",  "modType": "hp_flat",    "value": 96 }
+  ]
+}

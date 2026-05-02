@@ -73,11 +73,20 @@ export function makeWhitestoneZone(): Zone {
 }
 
 // NPC placement — the Quest-board lives in the courtyard centre.
+// v0.8.0 adds the Imbuer at the south-east of the courtyard, near the
+// Frostvein gate (lore: she keeps her workshop close to the descent so the
+// returning delvers can hand off their hauls).
 export const WHITESTONE_NPCS = [
   {
     id: 'questboard',
     kind: 'questboard' as const,
     name: 'Quest-board',
     tile: { tx: 8, ty: 7 },
+  },
+  {
+    id: 'imbuer',
+    kind: 'imbuer' as const,
+    name: 'The Imbuer',
+    tile: { tx: 11, ty: 10 },
   },
 ] as const;

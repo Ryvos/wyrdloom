@@ -14,6 +14,11 @@ export interface DerivedStats {
 
 // Compute total derived stats from base + every equipped item.
 // Pure — caller passes baseAtk/maxHp; this returns the total.
+//
+// v0.8.0: socketed gems contribute to the stat sum the same way affixes do.
+// An empty socket (null entry) contributes zero. The stat schema is shared
+// (atk_flat / hp_flat / armor_flat), so the same exhaustive switch handles
+// both affixes and gem mods.
 export function computeDerivedStats(
   baseAtk: number,
   baseMaxHp: number,
@@ -34,8 +39,25 @@ export function computeDerivedStats(
         case 'hp_flat':
           maxHp += aff.value;
           break;
-        // Add new modType cases here. The switch is exhaustive against
-        // ItemMod['type'] — TS will error if a new variant is missed.
+        case 'armor_flat':
+          armor += aff.value;
+          break;
+      }
+    }
+    if (item.sockets) {
+      for (const gem of item.sockets) {
+        if (!gem) continue;
+        switch (gem.modType) {
+          case 'atk_flat':
+            atk += gem.value;
+            break;
+          case 'hp_flat':
+            maxHp += gem.value;
+            break;
+          case 'armor_flat':
+            armor += gem.value;
+            break;
+        }
       }
     }
   }

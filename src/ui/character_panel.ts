@@ -11,11 +11,19 @@ import {
   INTENT_UNEQUIP_EVENT,
   type UnequipIntent,
 } from './store';
-import { RARITY_COLOR, type Item, type Rarity, type Slot } from '../types/items';
+import { RARITY_COLOR, type GemKind, type Item, type Rarity, type Slot } from '../types/items';
 
 function rarityHex(r: Rarity): string {
   return '#' + RARITY_COLOR[r].toString(16).padStart(6, '0');
 }
+
+const GEM_KIND_COLOR: Record<GemKind, string> = {
+  ruby: '#c44a2a',
+  sapphire: '#3a6ec9',
+  emerald: '#3aa75a',
+  topaz: '#c8a64a',
+  diamond: '#dceaf0',
+};
 
 @customElement('wyrd-character')
 export class WyrdCharacter extends WyrdPanel {
@@ -87,6 +95,15 @@ export class WyrdCharacter extends WyrdPanel {
         text-overflow: ellipsis;
         white-space: nowrap;
       }
+      .slot .sockets {
+        margin-top: 2px;
+        font-size: 9px;
+        line-height: 1;
+        letter-spacing: 1px;
+      }
+      .slot .sockets .empty {
+        opacity: 0.45;
+      }
       .stats {
         font-size: 13px;
         line-height: 1.7;
@@ -148,6 +165,7 @@ export class WyrdCharacter extends WyrdPanel {
         </div>
       `;
     }
+    const sockets = item.sockets ?? [];
     return html`
       <div
         class="slot ${slot} equipped"
@@ -159,6 +177,15 @@ export class WyrdCharacter extends WyrdPanel {
           ${this._glyph(slot)}
         </div>
         <div class="name" style=${`color:${rarityHex(item.rarity)}`}>${item.name}</div>
+        ${sockets.length > 0
+          ? html`<div class="sockets" data-testid="paperdoll-sockets-${slot}">
+              ${sockets.map((g) =>
+                g
+                  ? html`<span style=${`color:${GEM_KIND_COLOR[g.kind]}`} title=${g.name}>&#x25C6;</span>`
+                  : html`<span class="empty">&#x25CB;</span>`,
+              )}
+            </div>`
+          : null}
       </div>
     `;
   }

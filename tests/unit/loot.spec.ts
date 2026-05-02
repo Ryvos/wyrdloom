@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { rollDrop, rollAffixes } from '../../src/systems/loot';
+import { rollDrop, rollAffixes, rollGemDrop } from '../../src/systems/loot';
 import { makeRng } from '../../src/systems/rng';
 import type { BaseItem } from '../../src/types/items';
 
@@ -72,5 +72,50 @@ describe('loot rolling', () => {
         expect(aff.value).toBeGreaterThan(0);
       }
     }
+  });
+
+  it('guaranteed boss drop forces a unique with fixed flavor', () => {
+    const drop = rollDrop({ monsterLevel: 16, seed: 'boss-worm-mother-1', guaranteed: true });
+    expect(drop).not.toBeNull();
+    expect(drop?.rarity).toBe('unique');
+    expect(drop?.unique).toBeDefined();
+    expect(typeof drop?.unique?.flavor).toBe('string');
+    expect((drop?.unique?.flavor.length ?? 0) > 0).toBe(true);
+    // ilvl gating: a level-16 boss can't roll a unique above ilvl 16.
+    expect((drop?.ilvl ?? 0) <= 16).toBe(true);
+  });
+
+  it('unique items expose fixedAffixes as deterministic affix values', () => {
+    const a = rollDrop({ monsterLevel: 16, seed: 'boss-fixed-A', guaranteed: true });
+    const b = rollDrop({ monsterLevel: 16, seed: 'boss-fixed-A', guaranteed: true });
+    expect(a).toEqual(b);
+    if (a) {
+      // Fixed-affix values should be positive integers (no min/max range roll).
+      for (const aff of a.affixes) {
+        expect(Number.isInteger(aff.value)).toBe(true);
+        expect(aff.value).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('rollGemDrop wraps a Gem in a bag-only Item when it lands', () => {
+    // Sample many seeds; gem drop is ~5% so we expect a few hits in 200 rolls.
+    let saw = false;
+    for (let i = 0; i < 200; i++) {
+      const item = rollGemDrop({ monsterLevel: 8, seed: `gem-${i}` });
+      if (!item) continue;
+      saw = true;
+      expect(item.gem).toBeDefined();
+      expect(item.affixes).toEqual([]);
+      expect(item.gem?.value).toBeGreaterThan(0);
+      expect(['atk_flat', 'hp_flat', 'armor_flat']).toContain(item.gem?.modType);
+    }
+    expect(saw).toBe(true);
+  });
+
+  it('gem drops are deterministic for a fixed seed', () => {
+    const a = rollGemDrop({ monsterLevel: 8, seed: 'gem-seed-determinism' });
+    const b = rollGemDrop({ monsterLevel: 8, seed: 'gem-seed-determinism' });
+    expect(a).toEqual(b);
   });
 });

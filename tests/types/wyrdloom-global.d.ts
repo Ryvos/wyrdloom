@@ -74,7 +74,7 @@ interface Window {
       setPlayerHp(n: number): void;
       forceDrop(seed: string, tile?: { tx: number; ty: number }): void;
       giveItem(seed: string): void;
-      openPanel(id: 'inventory' | 'character' | 'bind'): void;
+      openPanel(id: 'inventory' | 'character' | 'bind' | 'imbuer'): void;
       closeAllPanels(): void;
       equipFromInventoryByUid(uid: string): void;
       unequipSlot(slot: 'weapon' | 'head' | 'chest' | 'ring'): void;

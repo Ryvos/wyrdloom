@@ -1,8 +1,9 @@
-// WYRDLOOM v0.7.0 — Week 7: Furyborn class + Frostvein zone + Worm-Mother.
-// New in v0.7.0: class system with Rage resource, 6-skill Furyborn kit
-// (3 working, 3 stubbed), Frostvein ice-cave biome reachable from
-// Whitestone, Worm-Mother Vyl boss with 3 phases (different mechanic than
-// Hollow Bishop), SaveAdapter v2 with first schema migration.
+// WYRDLOOM v0.8.0 — Week 8: Class balance + 20 uniques + crafting + sockets + gems.
+// New in v0.8.0: 'unique' rarity wired into the drop pipeline (forced on
+// act-bosses), 20 unique items in data/uniques.json, 25 gems (5 kinds × 5
+// qualities), Imbuer NPC in Whitestone with two recipes (3 magic →
+// 1 rare, socket gem into empty socket), socket pips on tooltip + paper-doll,
+// SaveAdapter v3 (no shape break — version-stamp bump only).
 
 import { Application, Container, Graphics, ColorMatrixFilter, type FederatedPointerEvent } from 'pixi.js';
 import { TILE_W, TILE_H, tileToScreen, screenToTile, roundTile, depthFor } from './engine/iso';
@@ -42,7 +43,8 @@ import { mountResourceBar } from './ui/resource_bar';
 import type { ResourceBar } from './ui/resource_bar';
 import { getClass } from './systems/class';
 import { getSkill } from './systems/skills';
-import { rollDrop } from './systems/loot';
+import { rollDrop, rollGemDrop } from './systems/loot';
+import { imbueRare, socketGem } from './systems/crafting';
 import { computeDerivedStats, equip, unequip } from './systems/inventory';
 import {
   makeInventory,
@@ -61,9 +63,13 @@ import {
   INTENT_EQUIP_EVENT,
   INTENT_UNEQUIP_EVENT,
   INTENT_DROP_EVENT,
+  INTENT_IMBUE_EVENT,
+  INTENT_SOCKET_EVENT,
   type EquipIntent,
   type UnequipIntent,
   type DropIntent,
+  type ImbueIntent,
+  type SocketIntent,
 } from './ui/store';
 import { dispatchPanelToggle, type PanelId } from './ui/panel';
 import { SKILL_TRIGGER_EVENT } from './ui/hotbar';
@@ -96,8 +102,9 @@ import './ui/hotbar';
 import './ui/bind_panel';
 import './ui/quest_tracker';
 import './ui/npc_dialog';
+import './ui/imbuer_panel';
 
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.8.0';
 const DEFAULT_CATACOMBS_SEED = 'catacombs-1';
 const DEFAULT_FROSTVEIN_SEED = 'frostvein-1';
 const DEFAULT_CHARACTER_NAME = 'Wyrdling';
@@ -433,11 +440,11 @@ async function main(): Promise<void> {
         addItem(W.inventory, item);
         syncStore(W);
       },
-      openPanel(id: 'inventory' | 'character' | 'bind'): void {
+      openPanel(id: 'inventory' | 'character' | 'bind' | 'imbuer'): void {
         dispatchPanelToggle({ id, open: true });
       },
       closeAllPanels(): void {
-        for (const id of ['inventory', 'character', 'bind'] as const) {
+        for (const id of ['inventory', 'character', 'bind', 'imbuer'] as const) {
           dispatchPanelToggle({ id, open: false });
         }
       },
@@ -616,6 +623,16 @@ function handleKill(W: World, view: ActorView, nowMs: number): void {
     const dropTile = { ...view.actor.tile };
     const groundView = spawnGroundItem(W.world, W.app.ticker, item, dropTile);
     W.groundItems.push(groundView);
+  }
+  // Independent gem-drop roll (regular monsters only — bosses already drop a
+  // guaranteed unique). Same dropSeed namespace, but rollGemDrop salts it.
+  if (!isBoss) {
+    const gemItem = rollGemDrop({ monsterLevel, seed: dropSeed });
+    if (gemItem) {
+      const dropTile = { ...view.actor.tile };
+      const groundView = spawnGroundItem(W.world, W.app.ticker, gemItem, dropTile);
+      W.groundItems.push(groundView);
+    }
   }
   if (isBoss) {
     const done = onBossKilled(W.quests, id);
@@ -885,6 +902,11 @@ function openNpcDialog(W: World, def: NpcDef): void {
       detail: { kind: def.kind, npcName: def.name },
     }),
   );
+  // Imbuer service is its own dedicated panel — open it alongside the
+  // teaser dialog so the player has the controls in front of them.
+  if (def.kind === 'imbuer') {
+    dispatchPanelToggle({ id: 'imbuer', open: true });
+  }
 }
 
 // Set the player's goal + attack target and recompute the A* path. Single
@@ -1028,6 +1050,81 @@ function unequipToInventory(W: World, slot: Slot): void {
   syncStore(W);
 }
 
+// Imbuer recipe: consume 3 magic same-slot inputs from the bag and add the
+// resulting rare back into the bag. Aborts (no consumption) if validation
+// fails or the bag has no room for the product.
+function handleImbue(W: World, uids: ReadonlyArray<string>): void {
+  if (uids.length !== 3) return;
+  const items = uids
+    .map((u) => W.inventory.slots.find((s) => s.item.uid === u)?.item)
+    .filter((it): it is NonNullable<typeof it> => Boolean(it));
+  if (items.length !== 3) return;
+  const result = imbueRare(items);
+  if (!result.ok || !result.product) {
+    console.warn('imbue failed:', result.reason);
+    return;
+  }
+  // Pre-check: removing 3 items frees their cells, so room is virtually
+  // always available — but still gate to be safe with oddly-sized items.
+  for (const u of uids) removeItem(W.inventory, u);
+  if (!hasRoomFor(W.inventory, result.product)) {
+    // Edge case — drop on the ground at the player's tile.
+    const view = spawnGroundItem(W.world, W.app.ticker, result.product, {
+      ...W.player.actor.tile,
+    });
+    W.groundItems.push(view);
+  } else {
+    addItem(W.inventory, result.product);
+  }
+  syncStore(W);
+}
+
+// Socket a gem into a target item. Target may live in the bag or be
+// currently equipped — equipped items mutate in place and trigger a stat
+// recalc so the gem's bonus shows up immediately on the player.
+function handleSocket(
+  W: World,
+  detail: { gemUid: string; targetUid: string; socketIx?: number },
+): void {
+  const gemSlot = W.inventory.slots.find((s) => s.item.uid === detail.gemUid);
+  if (!gemSlot || !gemSlot.item.gem) return;
+
+  let target = W.inventory.slots.find((s) => s.item.uid === detail.targetUid)?.item;
+  let equippedSlot: Slot | null = null;
+  if (!target) {
+    for (const slotId of ['weapon', 'head', 'chest', 'ring'] as const) {
+      const it = W.player.actor.equipment[slotId];
+      if (it && it.uid === detail.targetUid) {
+        target = it;
+        equippedSlot = slotId;
+        break;
+      }
+    }
+  }
+  if (!target) return;
+
+  const result = socketGem(target, gemSlot.item.gem, detail.socketIx);
+  if (!result.ok || !result.item) {
+    console.warn('socket failed:', result.reason);
+    return;
+  }
+  removeItem(W.inventory, detail.gemUid);
+  if (equippedSlot) {
+    W.player.actor.equipment[equippedSlot] = result.item;
+    recomputeStats(W);
+  } else {
+    // Replace the bag's stored Item so future tooltips/equip operations see
+    // the updated sockets array.
+    const bagSlot = W.inventory.slots.find((s) => s.item.uid === detail.targetUid);
+    if (bagSlot) {
+      // Inventory.slots is the live array; cast through unknown to swap the
+      // readonly item ref. The bag's grid layout is unchanged.
+      (bagSlot as { item: typeof bagSlot.item }).item = result.item;
+    }
+  }
+  syncStore(W);
+}
+
 function dropFromInventory(W: World, uid: string): void {
   const inSlot = W.inventory.slots.find((s) => s.item.uid === uid);
   if (!inSlot) return;
@@ -1156,6 +1253,14 @@ function bindIntentHandlers(W: World): void {
     const detail = (e as CustomEvent<DropIntent>).detail;
     if (detail) dropFromInventory(W, detail.uid);
   });
+  window.addEventListener(INTENT_IMBUE_EVENT, (e: Event) => {
+    const detail = (e as CustomEvent<ImbueIntent>).detail;
+    if (detail) handleImbue(W, detail.uids);
+  });
+  window.addEventListener(INTENT_SOCKET_EVENT, (e: Event) => {
+    const detail = (e as CustomEvent<SocketIntent>).detail;
+    if (detail) handleSocket(W, detail);
+  });
   // Hotbar trigger — v0.7.0 wires the Furyborn kit. Cleave is implicit
   // (left-click), other skills fire here from key 1-4 or hotbar click.
   window.addEventListener(SKILL_TRIGGER_EVENT, (e: Event) => {
@@ -1189,7 +1294,7 @@ function bindKeyboard(W: World): void {
       }
       e.preventDefault();
     } else if (key === 'escape') {
-      const ids: PanelId[] = ['inventory', 'character', 'bind'];
+      const ids: PanelId[] = ['inventory', 'character', 'bind', 'imbuer'];
       for (const id of ids) dispatchPanelToggle({ id, open: false });
       window.dispatchEvent(new CustomEvent('wyrdloom:npc-dialog-close'));
       e.preventDefault();
